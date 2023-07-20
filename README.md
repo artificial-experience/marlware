@@ -10,6 +10,14 @@ My way of doing things? I dig deep. I mean, really deep. I've found myself readi
 
 As I keep learning and growing, I have plans to beef up Marl-Revamped-QMIX. I'm looking to integrate it with cool technologies like Nvidia Isaac Gym and AWS Cloud services. This should make it a pretty handy tool for anyone interested in MARL.
 
+## Development Process
+
+When it comes to the development process, organization is key. That's why you'll find all the stable code on the `main` branch. This is the go-to place if you're looking for tried and tested pieces of the project to learn from or to use as a basis for your own work.
+
+The real action happens on the `dev` branch. This is where I'm constantly working on new ideas, tweaking existing ones, and generally pushing the boundaries of what Marl-Revamped-QMIX can do. Keep in mind, things on the `dev` branch are always a work-in-progress, so you might encounter a few rough edges.
+
+In essence, `main` is for stability and `dev` is for innovation. Feel free to explore both branches and contribute as you see fit. Remember, every bit of feedback or suggestion helps make the project better!
+
 ## What Is QMIX?
 
 QMIX is a renowned value-based method in the sphere of MARL, acclaimed for its superior performance in a range of cooperative multi-agent reinforcement learning scenarios. It cleverly combines a centralized critic with decentralized actors, allowing for effective, tractable solutions to multi-agent tasks.
