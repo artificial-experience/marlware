@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "marl-revamped-qmix"
+version = "0.1.0"
+description = ""
+authors = ["Sithael <chojnacki.jamie@gmail.com>"]
+license = "MIT license"
+readme = "README.md"
+packages = [{include = "qmix"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+numpy = "^1.25.1"
+torch = "^2.0.1"
+pettingzoo = "^1.23.1"
+pyyaml = "^6.0.1"
+pytest = "^7.4.0"
+black = "^23.7.0"
+poethepoet = "^0.21.1"
+pre-commit = "^3.3.3"
+click = "^8.1.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poe.tasks]
+force-cuda11 = "python -m pip install torch==1.12.0+cu113 torchvision==0.13.0+cu113 -f https://download.pytorch.org/whl/torch_stable.html"
