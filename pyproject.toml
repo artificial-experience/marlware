@@ -18,6 +18,9 @@ black = "^23.7.0"
 poethepoet = "^0.21.1"
 pre-commit = "^3.3.3"
 click = "^8.1.6"
+toml = "^0.10.2"
+box2d-py = "^2.3.8"
+pygame = "^2.5.0"
 
 [build-system]
 requires = ["poetry-core"]
