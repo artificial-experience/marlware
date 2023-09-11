@@ -8,7 +8,7 @@ readme = "README.md"
 packages = [{include = "qmix"}]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.9"
 numpy = "^1.25.1"
 torch = "^2.0.1"
 pettingzoo = "^1.23.1"
@@ -21,6 +21,9 @@ click = "^8.1.6"
 toml = "^0.10.2"
 box2d-py = "^2.3.8"
 pygame = "^2.5.0"
+pysc2 = "^4.0.0"
+protobuf = "3.20"
+smac = {git = "https://github.com/oxwhirl/smac.git"}
 
 [build-system]
 requires = ["poetry-core"]

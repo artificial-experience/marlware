@@ -1,0 +1,61 @@
+architecture-directive:
+  drqn_configuration:
+    model:
+      type: dict
+      choice: {
+        "mlp_before_rnn": [128],
+        "rnn_hidden_state": [64],
+        "mlp_after_rnn": [128],
+        }
+    training:
+      lr:
+        type: float
+        choice: 0.0005
+      gamma:
+        type: float
+        choice: 0.99
+      epsilon_max:
+        type: float
+        choice: 1.0
+      epsilon_min:
+        type: float
+        choice: 0.05
+      num_epsilon_dec_steps:
+        type: int
+        choice: 50_000
+      target_network_update_schedule:
+        type: int
+        choice: 200
+  hyper_network_configuration:
+    model:
+      type: dict
+      choice: {
+        "mlp": [32],
+        }
+  mixing_network_configuration:
+    model:
+      choice: {
+        "mlp": [32],
+        }
+  device_configuration:
+    accelerator:
+      type: str
+      choice: "cpu"
+
+environment-directive:
+  prefix:
+    type: string
+    choice: "8m"
+  space_params_configuration:
+    observation_space_high:
+      type: int
+      choice: 100
+    observation_space_low:
+      type: int
+      choice: 0
+    action_space_high:
+      type: int
+      choice: 50
+    action_space_low:
+      type: int
+      choice: -50

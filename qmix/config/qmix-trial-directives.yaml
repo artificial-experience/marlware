@@ -1,0 +1,36 @@
+construct-directive:
+  trainable_configuration:
+    # defines network and environment params
+    config_name:
+      type: str
+      choice: mixing-32-gru-64-hypernet-32-env-8m.yaml
+    # defines logic behind trainable construct
+    construct_class:
+      type: str
+      choice: QMIXSharedParamsConstruct
+    num_agents:
+      type: int
+      choice: 2
+  replay_memory_configuration:
+    capacity:
+      type: int
+      choice: 5_000
+    batch_size:
+      type: int
+      choice: 32
+
+tuner-directive::
+  rollout_configuration:
+    timesteps_per_rollout_limit:
+      type: int
+      choice: 120
+    training_rollouts:
+      type: int
+      choice: 100_000
+  checkpoint_configuration:
+    checkpoint_frequency:
+      type: int
+      choice: 1000
+    checkpoint_at_end:
+      type: bool
+      choice: true
