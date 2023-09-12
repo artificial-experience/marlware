@@ -1,10 +1,10 @@
-from delegator.abstract.base_construct import BaseConstruct
+from agent.abstract.base_construct import BaseConstruct
 
+from qmix.agent.networks import DRQN
+from qmix.agent.networks import HyperNetwork
+from qmix.agent.networks import MixingNetwork
 from qmix.common import constants
 from qmix.common import methods
-from qmix.delegator.networks import DRQN
-from qmix.delegator.networks import HyperNetwork
-from qmix.delegator.networks import MixingNetwork
 from qmix.environment import SC2Environment
 
 

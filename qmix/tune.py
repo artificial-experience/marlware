@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import click
+from agent import AgentTunerDelegator
 from common import constants
 from common import methods
-from delegator import TunerDelegator
 
 
 class Tune:
@@ -39,7 +39,7 @@ class Tune:
         self._tuner_directive = self._trial_configuration.get("tuner-directive")
 
     def _prepare_trial(self):
-        self._tuner = TunerDelegator.from_trial_directive(
+        self._tuner = AgentTunerDelegator.from_trial_directive(
             construct_directive=self._construct_directive,
             tuner_directive=self._tuner_directive,
         ).delegate_tuner_entity()
