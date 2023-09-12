@@ -1,8 +1,10 @@
 from delegator.abstract.base_construct import BaseConstruct
 
-from qmix import environment
 from qmix.common import constants
 from qmix.common import methods
+from qmix.delegator.networks import DRQN
+from qmix.delegator.networks import HyperNetwork
+from qmix.delegator.networks import MixingNetwork
 
 
 class QMIXSharedParamsConstruct(BaseConstruct):
@@ -11,9 +13,9 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         self._construct_configuration = None
 
         # Networks
-        self._mixing_network_entity = None
         self._drqn_entity = None
         self._hypernetwork_entity = None
+        self._mixing_network_entity = None
 
     @classmethod
     def from_construct_registry_directive(cls, construct_registry_directive: str):
@@ -32,10 +34,33 @@ class QMIXSharedParamsConstruct(BaseConstruct):
     def _instantiate_construct(
         self,
         drqn_configuration: dict,
-        hyper_network_configuration: dict,
+        hypernetwork_configuration: dict,
         mixing_network_configuration: dict,
     ):
-        pass
+        self._drqn_entity = DRQN(config=drqn_configuration).construct_network()
+        self._hypernetwork_entity = HyperNetwork(
+            config=hypernetwork_configuration
+        ).construct_network()
+        self._mixing_network_entity = MixingNetwork(
+            config=mixing_network_configuration
+        ).construct_network()
 
     def commit(self):
-        print(self._construct_configuration)
+        drqn_configuration = methods.get_nested_dict_field(
+            directive=self._construct_configuration,
+            keys=["architecture-directive", "drqn_configuration"],
+        )
+        hypernetwork_configuration = methods.get_nested_dict_field(
+            directive=self._construct_configuration,
+            keys=["architecture-directive", "hypernetwork_configuration"],
+        )
+        mixing_network_configuration = methods.get_nested_dict_field(
+            directive=self._construct_configuration,
+            keys=["architecture-directive", "mixing_network_configuration"],
+        )
+        self._instantiate_construct(
+            drqn_configuration=drqn_configuration,
+            hypernetwork_configuration=hypernetwork_configuration,
+            mixing_network_configuration=mixing_network_configuration,
+        )
+        return self
