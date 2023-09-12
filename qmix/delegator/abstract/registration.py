@@ -9,10 +9,10 @@ class ConstructRegistry:
         cls.registered_constructs[construct_type] = construct_class
 
     @classmethod
-    def create(cls, construct_type, path_to_construct_file):
-        construct_class = cls.registered_constructs.get(construct_type)
+    def create(cls, target_construct_class, path_to_construct_file, num_agents):
+        construct_class = cls.registered_constructs.get(target_construct_class)
         if construct_class is None:
-            raise ValueError(f"Invalid construct type: {construct_type}")
+            raise ValueError(f"Invalid construct type: {construct_class}")
 
         if not hasattr(construct_class, "from_construct_registry_directive"):
             raise TypeError(
@@ -21,6 +21,7 @@ class ConstructRegistry:
 
         construct_registry_directive = {
             "path_to_construct_file": path_to_construct_file,
+            "num_agents": num_agents,
         }
 
         return construct_class.from_construct_registry_directive(
