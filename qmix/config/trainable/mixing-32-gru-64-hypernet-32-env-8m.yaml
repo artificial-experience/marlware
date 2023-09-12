@@ -3,9 +3,11 @@ architecture-directive:
     model:
       type: dict
       choice: {
-        "mlp_before_rnn": [128],
-        "rnn_hidden_state": [64],
-        "mlp_after_rnn": [128],
+        "input_size": 10,
+        "mlp_before_rnn": 128,
+        "rnn_hidden_state": 64,
+        "rnn_stack": 2,
+        "n_q_values": 10,
         }
     training:
       lr:
@@ -30,12 +32,14 @@ architecture-directive:
     model:
       type: dict
       choice: {
-        "mlp": [32],
+        "input_size": 10,
+        "mlp": 32,
+        "host_network_param_dims": 32,
         }
   mixing_network_configuration:
     model:
       choice: {
-        "mlp": [32],
+        "mlp": 32,
         }
   device_configuration:
     accelerator:

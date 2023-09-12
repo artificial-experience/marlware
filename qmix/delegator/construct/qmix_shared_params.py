@@ -5,12 +5,19 @@ from qmix.common import methods
 from qmix.delegator.networks import DRQN
 from qmix.delegator.networks import HyperNetwork
 from qmix.delegator.networks import MixingNetwork
+from qmix.environment import SC2Environment
 
 
 class QMIXSharedParamsConstruct(BaseConstruct):
     def __init__(self, construct_registry_directive: dict):
         self._construct_registry_directive = construct_registry_directive
         self._construct_configuration = None
+
+        # Number of agents in MARL setting
+        self._num_agents = None
+
+        # Default device set to cpu
+        self._accelerator_device = "cpu"
 
         # Networks
         self._drqn_entity = None
@@ -29,6 +36,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         instance._construct_configuration = methods.load_yaml(
             construct_file_path.absolute()
         )
+        instance._num_agents = construct_registry_directive.get("num_agents", None)
         return instance
 
     def _instantiate_construct(
