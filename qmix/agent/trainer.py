@@ -3,7 +3,7 @@ from common import methods
 from .trainable import TrainableConstructDelegator
 
 
-class TunerDelegator:
+class AgentTunerDelegator:
     def __init__(self, construct_directive: dict, tuner_directive: dict):
         self.construct_directive = construct_directive
         self.tuner_directive = tuner_directive
