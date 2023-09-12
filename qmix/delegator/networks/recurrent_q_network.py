@@ -5,9 +5,9 @@ import torch.nn as nn
 import torch.optim as optim
 
 
-class DQRN(nn.Module):
+class DRQN(nn.Module):
     def __init__(self, config):
-        super(DRQN, self).__init__()
+        super().__init__()
         self._config = config
 
     def construct_network(self):

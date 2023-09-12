@@ -24,6 +24,7 @@ pygame = "^2.5.0"
 pysc2 = "^4.0.0"
 protobuf = "3.20"
 smac = {git = "https://github.com/oxwhirl/smac.git"}
+mypy = "^1.5.1"
 
 [build-system]
 requires = ["poetry-core"]

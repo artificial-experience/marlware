@@ -26,7 +26,7 @@ architecture-directive:
       target_network_update_schedule:
         type: int
         choice: 200
-  hyper_network_configuration:
+  hypernetwork_configuration:
     model:
       type: dict
       choice: {
