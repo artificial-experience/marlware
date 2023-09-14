@@ -66,6 +66,8 @@ class DRQN(nn.Module):
         # Apply Xavier initialisation by recursive search
         self.apply(self._init_weights)
 
+        return self
+
     def forward(
         self,
         observation: torch.Tensor,
