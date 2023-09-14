@@ -17,9 +17,3 @@ class SC2Environment:
         n_actions = env_info["n_actions"]
         n_agents = env_info["n_agents"]
         return n_actions, n_agents
-
-
-if __name__ == "__main__":
-    config = {"env_name": "8m"}
-    env = SC2Environment(config)
-    x = env._get_map_informations()
