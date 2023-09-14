@@ -1,8 +1,5 @@
-import numpy as np
-import torch as T
-import torch.functional as F
+import torch
 import torch.nn as nn
-import torch.optim as optim
 
 from qmix.common import methods
 
@@ -11,82 +8,75 @@ class DRQN(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
         self._config = config
-        self._model = None
 
         # Architecture configuration
-        self._model_input_size = None
-        self._model_mlp_before_rnn = None
-        self._model_rnn_hidden_state = None
-        self._model_rnn_stack = None
+        self._model_observation_size = None
+        self._model_n_actions = None
+        self._model_embedding_size = None
+        self._model_hidden_state_size = None
         self._model_n_q_values = None
 
-        self._training_lr = None
-        self._training_gamma = None
-        self._training_epsilon_max = None
-        self._training_epsilon_min = None
-        self._training_num_epsilon_dec_steps = None
-        self._target_network_update_schedule = None
-
     def _access_config_params(self):
-        # Model configuration
-        self._model_input_size = methods.get_nested_dict_field(
+        self._model_observation_size = methods.get_nested_dict_field(
             directive=self._config,
-            keys=["model", "choice", "input_size"],
+            keys=["model", "choice", "observation_size"],
         )
-        self._model_mlp_before_rnn = methods.get_nested_dict_field(
+        self._model_n_actions = methods.get_nested_dict_field(
             directive=self._config,
-            keys=["model", "choice", "mlp_before_rnn"],
+            keys=["model", "choice", "n_actions"],
         )
-        self._model_rnn_hidden_state = methods.get_nested_dict_field(
+        self._model_embedding_size = methods.get_nested_dict_field(
             directive=self._config,
-            keys=["model", "choice", "rnn_hidden_state"],
+            keys=["model", "choice", "embedding_size"],
         )
-        self._model_rnn_stack = methods.get_nested_dict_field(
+        self._model_hidden_state_size = methods.get_nested_dict_field(
             directive=self._config,
-            keys=["model", "choice", "rnn_stack"],
+            keys=["model", "choice", "hidden_state_size"],
         )
         self._model_n_q_values = methods.get_nested_dict_field(
             directive=self._config,
             keys=["model", "choice", "n_q_values"],
         )
 
-        # Training configuration
-        self._training_lr = methods.get_nested_dict_field(
-            directive=self._config,
-            keys=["training", "lr", "choice"],
-        )
-        self._training_gamma = methods.get_nested_dict_field(
-            directive=self._config,
-            keys=["training", "gamma", "choice"],
-        )
-        self._training_epsilon_max = methods.get_nested_dict_field(
-            directive=self._config,
-            keys=["training", "epsilon_max", "choice"],
-        )
-        self._training_epsilon_min = methods.get_nested_dict_field(
-            directive=self._config,
-            keys=["training", "epsilon_min", "choice"],
-        )
-        self._training_num_epsilon_dec_steps = methods.get_nested_dict_field(
-            directive=self._config,
-            keys=["training", "num_epsilon_dec_steps", "choice"],
-        )
-        self._training_target_network_update_schedule = methods.get_nested_dict_field(
-            directive=self._config,
-            keys=["training", "target_network_update_schedule", "choice"],
-        )
+    def _init_weights(self, x):
+        if type(x) == nn.Linear:
+            nn.init.xavier_uniform_(x.weight)
+            x.bias.data.fill_(0.01)
 
     def construct_network(self):
         self._access_config_params()
-        self._model = nn.Sequential(
-            nn.Linear(self._model_input_size, self._model_mlp_before_rnn),
-            nn.GRU(
-                self._model_mlp_before_rnn,
-                self._model_rnn_hidden_state,
-                self._model_rnn_stack,
+
+        # Initial MLP: (observation + last action one hot encoded) -> embedding
+        self.mlp1 = nn.Sequential(
+            nn.Linear(
+                self._model_observation_size + self._model_n_actions,
+                self._model_embedding_size,
             ),
-            nn.Linear(self._model_rnn_hidden_state, self._model_n_q_values),
+            nn.ReLU(),
         )
 
-    def forward(self, observation: tuple):
-        pass
+        self.lstm = nn.LSTMCell(
+            self._model_embedding_size, self._model_hidden_state_size
+        )
+
+        self.mlp2 = nn.Sequential(
+            nn.Linear(self._model_hidden_state_size, self._model_n_q_values)
+        )
+
+        # Apply Xavier initialisation by recursive search
+        self.apply(self._init_weights)
+
+    def forward(
+        self,
+        observation: torch.Tensor,
+        prev_action: torch.Tensor,
+        hidden_state: torch.Tensor,
+        cell_state: torch.Tensor,
+    ):
+        joint_input = torch.cat([observation, prev_action], axis=1)
+        x = self.mlp1(joint_input)
+        updated_hidden_state, updated_cell_state = self.rnn(
+            x, (hidden_state, cell_state)
+        )
+        q_values = self.mlp2(updated_hidden_state)
+        return q_values, (updated_hidden_state, updated_cell_state)

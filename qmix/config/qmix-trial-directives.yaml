@@ -8,9 +8,6 @@ construct-directive:
     construct_class:
       type: str
       choice: QMIXSharedParamsConstruct
-    num_agents:
-      type: int
-      choice: 2
   replay_memory_configuration:
     capacity:
       type: int
