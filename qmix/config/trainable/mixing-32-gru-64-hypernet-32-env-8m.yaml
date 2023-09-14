@@ -3,11 +3,11 @@ architecture-directive:
     model:
       type: dict
       choice: {
-        "input_size": 10,
-        "mlp_before_rnn": 128,
-        "rnn_hidden_state": 64,
-        "rnn_stack": 2,
-        "n_q_values": 10,
+        "observation_size": 80,
+        "n_actions": 14,
+        "embedding_size": 64,
+        "hidden_state_size": 128,
+        "n_q_values": 14,
         }
     training:
       lr:
@@ -29,17 +29,24 @@ architecture-directive:
         type: int
         choice: 200
   hypernetwork_configuration:
-    model:
-      type: dict
-      choice: {
-        "input_size": 10,
-        "mlp": 32,
-        "host_network_param_dims": 32,
-        }
+    bias_updates:
+      model:
+        type: dict
+        choice: {
+          "state_representation_size": 168,
+          "hidden_layer_size": 32,
+          }
+    weight_updates:
+      model:
+        type: dict
+        choice: {
+          "state_representation_size": 168,
+          "hidden_layer_size": 32,
+          }
   mixing_network_configuration:
     model:
       choice: {
-        "mlp": 32,
+        "hidden_layer_size": 32,
         }
   device_configuration:
     accelerator:
@@ -50,16 +57,19 @@ environment-directive:
   prefix:
     type: string
     choice: "8m"
+  num_agents:
+    type: int
+    choice: 8
   space_params_configuration:
-    observation_space_high:
+    state_shape:
       type: int
-      choice: 100
-    observation_space_low:
+      choice: 168
+    single_agent_obs_shape:
       type: int
-      choice: 0
-    action_space_high:
+      choice: 80
+    n_actions:
       type: int
-      choice: 50
-    action_space_low:
+      choice: 14
+    episode_limit:
       type: int
-      choice: -50
+      choice: 120
