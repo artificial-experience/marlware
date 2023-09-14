@@ -43,7 +43,12 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         # Extract the accelerator device and number of agents from the configuration
         instance._accelerator_device = methods.get_nested_dict_field(
             directive=configuration,
-            keys=["device_configuration", "accelerator", "choice"],
+            keys=[
+                "architecture-directive",
+                "device_configuration",
+                "accelerator",
+                "choice",
+            ],
         )
         instance._num_agents = methods.get_nested_dict_field(
             directive=configuration,
