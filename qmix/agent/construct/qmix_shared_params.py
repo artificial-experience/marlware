@@ -58,7 +58,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
     ):
         self._mixing_network_entity = MixingNetwork(
             mixing_network_configuration=mixing_network_configuration,
-            hypernetwork_configuration=mixing_network_configuration,
+            hypernetwork_configuration=hypernetwork_configuration,
         ).construct_network()
 
     def _spawn_agents(self, drqn_configuration):

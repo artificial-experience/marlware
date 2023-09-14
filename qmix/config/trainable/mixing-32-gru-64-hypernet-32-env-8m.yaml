@@ -46,6 +46,7 @@ architecture-directive:
   mixing_network_configuration:
     model:
       choice: {
+        "n_q_values": 14,
         "hidden_layer_size": 32,
         }
   device_configuration:
