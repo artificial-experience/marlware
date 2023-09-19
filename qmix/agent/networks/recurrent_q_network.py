@@ -38,6 +38,10 @@ class DRQN(nn.Module):
             keys=["model", "choice", "n_q_values"],
         )
 
+    @property
+    def hidden_state_dim(self):
+        return self._model_hidden_state_size
+
     def _init_weights(self, x):
         if type(x) == nn.Linear:
             nn.init.xavier_uniform_(x.weight)
