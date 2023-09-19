@@ -1,4 +1,15 @@
 architecture-directive:
+  construct_configuration:
+    training:
+      lr:
+        type: float
+        choice: 0.0005
+      gamma:
+        type: float
+        choice: 0.99
+      target_network_update_schedule:
+        type: int
+        choice: 200
   drqn_configuration:
     model:
       type: dict
@@ -9,25 +20,16 @@ architecture-directive:
         "hidden_state_size": 128,
         "n_q_values": 14,
         }
-    training:
-      lr:
-        type: float
-        choice: 0.0005
-      gamma:
-        type: float
-        choice: 0.99
-      epsilon_max:
+    exploration:
+      epsilon:
         type: float
         choice: 1.0
       epsilon_min:
         type: float
         choice: 0.05
-      num_epsilon_dec_steps:
-        type: int
-        choice: 50_000
-      target_network_update_schedule:
-        type: int
-        choice: 200
+      epsilon_dec:
+        type: flaot
+        choice: 0.99
   hypernetwork_configuration:
     bias_updates:
       model:
