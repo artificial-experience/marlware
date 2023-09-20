@@ -70,7 +70,7 @@ class MixingNetwork(nn.Module):
         # Reshape operation
         hidden_weights = hidden_layer_weights.view_as(self.hidden_layer.weight)
         output_weights = output_layer_weights.view_as(self.output_layer.weight)
-        hidden_biases = hidden_layer_biases.view_as(self.hiden_layer.bias)
+        hidden_biases = hidden_layer_biases.view_as(self.hidden_layer.bias)
         output_biases = output_layer_biases.view_as(self.output_layer.bias)
 
         with torch.no_grad():
@@ -79,12 +79,13 @@ class MixingNetwork(nn.Module):
             self.hidden_layer.bias.copy_(hidden_biases)
             self.output_layer.bias.copy_(output_biases)
 
-    def construct_network(self):
+    def construct_network(self, num_agents: int):
         self._access_config_params()
 
         self.hidden_layer = nn.Linear(
-            self._model_n_q_values, self._model_hidden_layer_size
+            self._model_n_q_values * num_agents, self._model_hidden_layer_size
         )
+        self.elu_activation = nn.ELU()
         self.output_layer = nn.Linear(self._model_hidden_layer_size, 1)  # Output Q_tot
 
         mixing_network_hidden_layer_weights = self.hidden_layer.weight.numel()
@@ -124,7 +125,7 @@ class MixingNetwork(nn.Module):
         )
 
         output = self.hidden_layer(q_values)
-        output = nn.ELU(output)
+        output = self.elu_activation(output)
 
         q_tot = self.output_layer(output)
         return q_tot

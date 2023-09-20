@@ -109,16 +109,17 @@ class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
         self,
         hypernetwork_configuration: dict,
         mixing_network_configuration: dict,
+        num_agents: int,
     ):
         self._online_mixing_network = MixingNetwork(
             mixing_network_configuration=mixing_network_configuration,
             hypernetwork_configuration=hypernetwork_configuration,
-        ).construct_network()
+        ).construct_network(num_agents=num_agents)
 
         self._target_mixing_network = MixingNetwork(
             mixing_network_configuration=mixing_network_configuration,
             hypernetwork_configuration=hypernetwork_configuration,
-        ).construct_network()
+        ).construct_network(num_agents=num_agents)
 
     def _spawn_agents(
         self, drqn_configuration: dict, num_actions: int, num_agents: int
@@ -188,6 +189,7 @@ class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
         self._instantiate_factorisation_network(
             hypernetwork_configuration=hypernetwork_configuration,
             mixing_network_configuration=mixing_network_configuration,
+            num_agents=num_agents,
         )
 
         self._spawn_agents(
@@ -205,3 +207,7 @@ class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
 
     def optimize(self, batch: np.ndarray):
         pass
+
+    def forward(self, q, d):
+        x = self._online_mixing_network(q, d)
+        return x

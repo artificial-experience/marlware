@@ -35,14 +35,14 @@ architecture-directive:
       model:
         type: dict
         choice: {
-          "state_representation_size": 168,
+          "state_representation_size": 160,
           "hidden_layer_size": 32,
           }
     weight_updates:
       model:
         type: dict
         choice: {
-          "state_representation_size": 168,
+          "state_representation_size": 160,
           "hidden_layer_size": 32,
           }
   mixing_network_configuration:
