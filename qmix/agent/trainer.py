@@ -1,4 +1,5 @@
-from common import methods
+import torch
+from torchviz import make_dot
 
 from .trainable import TrainableConstructDelegator
 
@@ -23,6 +24,17 @@ class AgentTunerDelegator:
     def delegate_tuner_entity(self):
         """Instantiate and return tuner entity ready for training"""
         trainable_construct = self._trainable_construct_delegator.delegate()
+        print(trainable_construct)
+        q_values = torch.rand(112)
+        state = torch.rand(160)
+        y = trainable_construct(q_values, state)
+        print(y)
+        make_dot(
+            y.mean(),
+            params=dict(trainable_construct.named_parameters()),
+            show_attrs=True,
+            show_saved=True,
+        ).render("qmix_network", format="png")
         tuner = None
 
         return tuner

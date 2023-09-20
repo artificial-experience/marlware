@@ -39,13 +39,13 @@ class HyperNetworkForWeights(nn.Module):
     ):
         self._access_config_params()
 
-        self.hidden_layer = nn.Sequential(
+        self.hidden_layer_mlp = nn.Sequential(
             nn.Linear(
                 self._model_state_representation_size, host_network_weights_hidden_size
             ),
             AbsoluteActivation(),
         )
-        self.output_layer = nn.Sequential(
+        self.output_layer_mlp = nn.Sequential(
             nn.Linear(
                 self._model_state_representation_size, host_network_weights_output_size
             ),
@@ -58,8 +58,8 @@ class HyperNetworkForWeights(nn.Module):
         return self
 
     def forward(self, state_representation: torch.Tensor):
-        hidden_layer_output = self.mlp(state_representation)
-        output_layer_output = self.mlp(state_representation)
+        hidden_layer_output = self.hidden_layer_mlp(state_representation)
+        output_layer_output = self.output_layer_mlp(state_representation)
         return hidden_layer_output, output_layer_output
 
 
