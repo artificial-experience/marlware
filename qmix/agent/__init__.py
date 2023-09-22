@@ -1,1 +1,1 @@
-from .trainer import AgentTunerDelegator
+from .drqn_agent import DRQNAgent

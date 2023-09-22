@@ -75,6 +75,7 @@ class GenericBuffer:
 def initialize_memory(
     obs_shape,
     n_actions,
+    n_agents,
     max_size,
     batch_size,
     n_threads=1,
@@ -86,8 +87,8 @@ def initialize_memory(
     prioritized=False,
 ):
     if n_threads > 1:
-        # state_shape = [max_size, *obs_shape, n_threads]
-        state_shape = [max_size, n_threads, *obs_shape]
+        # observation_shape = [max_size, *obs_shape, n_threads]
+        observation_shape = [max_size, n_threads, *obs_shape]
         reward_shape = [max_size, n_threads]
         done_shape = [max_size, n_threads]
 
@@ -98,22 +99,28 @@ def initialize_memory(
             action_shape = [max_size, n_threads]
             a_dtype = np.int64
     else:
-        state_shape = [max_size, *obs_shape]
+        observation_shape = [max_size, n_agents, *obs_shape]
         reward_shape = max_size
         done_shape = max_size
         if action_space == "continuous":
-            action_shape = [max_size, n_actions]
+            action_shape = [max_size, n_agents, n_actions]
             a_dtype = np.float32
         elif action_space == "discrete":
-            action_shape = max_size
+            action_shape = [max_size, n_agents]
             a_dtype = np.int64
 
-    fields = fields or ["states", "actions", "rewards", "states_", "dones"]
+    fields = fields or [
+        "observations",
+        "actions",
+        "rewards",
+        "next_observations",
+        "dones",
+    ]
     vals = vals or [
-        np.zeros(state_shape, dtype=np.float32),
+        np.zeros(observation_shape, dtype=np.float32),
         np.zeros(action_shape, dtype=a_dtype),
         np.zeros(reward_shape, dtype=np.float32),
-        np.zeros(state_shape, dtype=np.float32),
+        np.zeros(observation_shape, dtype=np.float32),
         np.zeros(done_shape, dtype=bool),
     ]
 

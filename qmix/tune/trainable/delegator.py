@@ -1,10 +1,10 @@
 from common import methods
 
-from .abstract.registration import ConstructRegistry
-from .construct.qmix_shared_params import QMIXSharedParamsConstruct
+from qmix.abstract.construct import ConstructRegistry
+from qmix.tune.construct import QMIXSharedParamsConstruct
 
 
-class TrainableConstructDelegator:
+class TrainableConstruct:
     def __init__(self, construct_directive: dict):
         self._construct_directive = construct_directive
 

@@ -35,14 +35,14 @@ architecture-directive:
       model:
         type: dict
         choice: {
-          "state_representation_size": 160,
+          "state_representation_size": 168,
           "hidden_layer_size": 32,
           }
     weight_updates:
       model:
         type: dict
         choice: {
-          "state_representation_size": 160,
+          "state_representation_size": 168,
           "hidden_layer_size": 32,
           }
   mixing_network_configuration:
@@ -76,3 +76,14 @@ environment-directive:
     episode_limit:
       type: int
       choice: 120
+
+memory-directive:
+  max_size:
+    type: int
+    choice: 5_000
+  batch_size:
+    type: int
+    choice: 32
+  prioritized:
+    type: bool
+    choice: false

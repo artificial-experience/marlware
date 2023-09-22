@@ -1,9 +1,8 @@
 import numpy as np
 import torch
 
-from qmix.agent.networks import DRQN
-from qmix.common import constants
 from qmix.common import methods
+from qmix.networks import DRQN
 
 
 class DRQNAgent:

@@ -32,3 +32,10 @@ class ConstructRegistry:
     @classmethod
     def get_construct(cls, construct_type):
         return cls.registered_constructs.get(construct_type)
+
+
+class BaseConstruct:
+    @classmethod
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        ConstructRegistry.register_construct(cls.__name__, cls)
