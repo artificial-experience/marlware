@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 
-from qmix.agent.networks import HyperNetworkForBiases
-from qmix.agent.networks import HyperNetworkForWeights
 from qmix.common import methods
+from qmix.networks import HyperNetworkForBiases
+from qmix.networks import HyperNetworkForWeights
 
 
 class MixingNetwork(nn.Module):

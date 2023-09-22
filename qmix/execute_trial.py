@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import click
-from agent import AgentTunerDelegator
 from common import constants
 from common import methods
+from tune import Tuner
 
 
 class Tune:
@@ -38,19 +38,18 @@ class Tune:
         self._construct_directive = self._trial_configuration.get("construct-directive")
         self._tuner_directive = self._trial_configuration.get("tuner-directive")
 
-    def _prepare_trial(self):
-        self._tuner = AgentTunerDelegator.from_trial_directive(
+    def _prepare_tuner(self):
+        self._tuner = Tuner.from_trial_directive(
             construct_directive=self._construct_directive,
             tuner_directive=self._tuner_directive,
-        ).delegate_tuner_entity()
+        )
 
     # TODO: add possibility to connect to AWS as remote=True
     def execute_trial(self, remote=False):
         self._set_trial_configuration()
-        self._prepare_trial()
+        self._prepare_tuner()
 
-        # results = self._tuner.start_rollout()
-        results = None
+        results = self._tuner.fit()
 
         if results:
             # make some logging and stuff

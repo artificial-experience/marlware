@@ -8,20 +8,13 @@ construct-directive:
     construct_class:
       type: str
       choice: QMIXSharedParamsConstruct
-  replay_memory_configuration:
-    capacity:
-      type: int
-      choice: 5_000
-    batch_size:
-      type: int
-      choice: 32
 
 tuner-directive::
   rollout_configuration:
-    timesteps_per_rollout_limit:
+    steps_per_rollout_limit:
       type: int
       choice: 120
-    training_rollouts:
+    n_rollouts:
       type: int
       choice: 100_000
   checkpoint_configuration:

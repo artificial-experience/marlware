@@ -1,0 +1,1 @@
+from .delegator import TrainableConstruct

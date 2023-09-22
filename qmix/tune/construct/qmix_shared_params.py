@@ -1,18 +1,18 @@
 import numpy as np
 import torch
-from agent.abstract.base_construct import BaseConstruct
 
-from qmix.agent.construct.entity import DRQNAgent
-from qmix.agent.networks import DRQN
-from qmix.agent.networks import MixingNetwork
+from qmix.abstract.construct import BaseConstruct
+from qmix.agent import DRQNAgent
 from qmix.common import constants
 from qmix.common import methods
 from qmix.environment import SC2Environment
+from qmix.memory import initialize_memory
+from qmix.networks import DRQN
+from qmix.networks import MixingNetwork
 
 
-class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
+class QMIXSharedParamsConstruct(BaseConstruct):
     def __init__(self, construct_registry_directive: dict):
-        super().__init__()
         self._construct_registry_directive = construct_registry_directive
         self._construct_configuration = None
 
@@ -21,6 +21,10 @@ class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
 
         # Instantiated env
         self._environment = None
+        self._environment_info = None
+
+        # Instantiated memory buffer
+        self._replay_memory = None
 
         # Networks
         self._shared_target_drqn_network = None
@@ -101,8 +105,8 @@ class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
         )
         return instance
 
-    def _instantiate_optimizer_and_criterion(self, learning_rate: float):
-        self._optimizer = torch.optim.Adam(params=self.parameters(), lr=learning_rate)
+    def _instantiate_optimizer_and_criterion(self, parameters, learning_rate: float):
+        self._optimizer = torch.optim.Adam(params=parameters, lr=learning_rate)
         self._criterion = torch.nn.MSELoss()
 
     def _instantiate_factorisation_network(
@@ -143,8 +147,46 @@ class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
             for identifier in range(num_agents)
         ]
 
-    def _create_environment_instance(self, environment_configuration: dict):
-        self._environment = SC2Environment(environment_configuration)
+    def _instantiate_env(self, environment_configuration: dict):
+        environment_creator = SC2Environment(config=environment_configuration)
+        (
+            self._environment,
+            self._environment_info,
+        ) = environment_creator.create_env_instance()
+
+    def _instantiate_replay_memory(self, memory_configuration: dict):
+        max_size = methods.get_nested_dict_field(
+            directive=memory_configuration,
+            keys=["max_size", "choice"],
+        )
+        batch_size = methods.get_nested_dict_field(
+            directive=memory_configuration,
+            keys=["batch_size", "choice"],
+        )
+        prioritized = methods.get_nested_dict_field(
+            directive=memory_configuration,
+            keys=["prioritized", "choice"],
+        )
+        prev_actions_field = "prev_actions"
+        prev_actions_vals = np.zeros([max_size, 8], dtype=np.int64)
+
+        states_field = "states"
+        states_vals = np.zeros([max_size, 168], dtype=np.float32)
+
+        extra_fields = (prev_actions_field, states_field)
+        extra_vals = (prev_actions_vals, states_vals)
+
+        observation_shape = (80,)
+        self._memory = initialize_memory(
+            obs_shape=observation_shape,
+            n_actions=14,
+            n_agents=8,
+            max_size=max_size,
+            batch_size=batch_size,
+            prioritized=prioritized,
+            extra_fields=extra_fields,
+            extra_vals=extra_vals,
+        )
 
     def _check_construct(self):
         assert self._agents is not None, "Agents are not spawned"
@@ -155,8 +197,6 @@ class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
             self._target_mixing_network is not None
         ), "Target mixing network is not instantiated"
         assert self._environment is not None, "Environment is not instantiated"
-        assert self._optimizer is not None, "Optimizer is not instantiated"
-        assert self._criterion is not None, "Objective function is not instantiated"
 
     def commit(self):
         drqn_configuration = methods.get_nested_dict_field(
@@ -170,6 +210,14 @@ class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
         mixing_network_configuration = methods.get_nested_dict_field(
             directive=self._construct_configuration,
             keys=["architecture-directive", "mixing_network_configuration"],
+        )
+        memory_configuration = methods.get_nested_dict_field(
+            directive=self._construct_configuration,
+            keys=["memory-directive"],
+        )
+        environment_configuration = methods.get_nested_dict_field(
+            directive=self._construct_configuration,
+            keys=["environment-directive"],
         )
         num_actions = methods.get_nested_dict_field(
             directive=self._construct_configuration,
@@ -198,16 +246,83 @@ class QMIXSharedParamsConstruct(torch.nn.Module, BaseConstruct):
             num_agents=num_agents,
         )
 
-        env_config = {"env_name": "8m"}
-        self._create_environment_instance(environment_configuration=env_config)
-        self._instantiate_optimizer_and_criterion(learning_rate=self._learning_rate)
+        self._instantiate_env(environment_configuration=environment_configuration)
+        self._instantiate_replay_memory(memory_configuration=memory_configuration)
         self._check_construct()
 
         return self
 
-    def optimize(self, batch: np.ndarray):
-        pass
+    def _access_construct_parameters(self):
+        parameters = []
 
-    def forward(self, q, d):
-        x = self._online_mixing_network(q, d)
-        return x
+        parameters += list(self._shared_target_drqn_network.parameters())
+        parameters += list(self._shared_online_drqn_network.parameters())
+        parameters += list(self._online_mixing_network.parameters())
+        parameters += list(self._target_mixing_network.parameters())
+
+        return parameters
+
+    # TODO: break down into smaller chunks
+    def optimize(self, n_rollouts: int, steps_per_rollout_limit: int):
+        construct_params = self._access_construct_parameters()
+        self._instantiate_optimizer_and_criterion(
+            parameters=construct_params, learning_rate=self._learning_rate
+        )
+
+        episode_scores = []
+        for rollout in range(n_rollouts):
+            if self._memory.ready():
+                sample = self._memory.sample_buffer()
+
+                # Train the network
+
+            self._environment.reset()
+            terminated = False
+            episode_return = 0
+            prev_actions = None
+
+            while not terminated:
+                observations = self._environment.get_obs()
+                states = self._environment.get_state()
+
+                actions = []
+                num_agents = len(self._agents)
+                for agent_id in range(num_agents):
+                    available_actions = self._environment.get_avail_agent_actions(
+                        agent_id
+                    )
+                    available_actions_index = np.nonzero(available_actions)[0]
+
+                    agent = self._agents[agent_id]
+                    assert agent_id == agent._agent_unique_id
+
+                    agent_action = agent.act(observations)
+                    if agent_action not in available_actions_index:
+                        agent_action = np.random.choice(available_actions_index)
+
+                    actions.append(agent_action)
+
+                reward, terminated, _ = self._environment.step(actions)
+                episode_return += reward
+
+                next_observations = self._environment.get_obs()
+
+                if prev_actions is not None:
+                    data = [
+                        observations,
+                        actions,
+                        reward,
+                        next_observations,
+                        terminated,
+                        prev_actions,
+                        states,
+                    ]
+                    self._memory.store_transition(data)
+
+                prev_actions = actions
+
+            episode_scores.append(episode_return)
+
+        self._environment.close()
+
+        return episode_return
