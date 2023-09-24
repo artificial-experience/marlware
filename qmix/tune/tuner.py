@@ -22,4 +22,7 @@ class Tuner:
         return instance
 
     def fit(self):
-        self._trainable_construct.optimize(n_rollouts=40, steps_per_rollout_limit=120)
+        torch.autograd.set_detect_anomaly(True)
+        self._trainable_construct.optimize(
+            n_rollouts=15000, steps_per_rollout_limit=120
+        )

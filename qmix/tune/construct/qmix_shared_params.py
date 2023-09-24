@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from qmix.abstract.construct import BaseConstruct
 from qmix.agent import DRQNAgent
@@ -173,8 +174,11 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         states_field = "states"
         states_vals = np.zeros([max_size, 168], dtype=np.float32)
 
-        extra_fields = (prev_actions_field, states_field)
-        extra_vals = (prev_actions_vals, states_vals)
+        next_states_field = "next_states"
+        next_states_vals = np.zeros([max_size, 168], dtype=np.float32)
+
+        extra_fields = (prev_actions_field, states_field, next_states_field)
+        extra_vals = (prev_actions_vals, states_vals, next_states_vals)
 
         observation_shape = (80,)
         self._memory = initialize_memory(
@@ -197,6 +201,21 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             self._target_mixing_network is not None
         ), "Target mixing network is not instantiated"
         assert self._environment is not None, "Environment is not instantiated"
+
+    def update_target_network_params(self, tau=1.0):
+        """
+        Copies the weights from the online network to the target network.
+        If tau is 1.0 (default), it's a hard update. Otherwise, it's a soft update.
+
+        :param tau: The soft update factor, if < 1.0. Default is 1.0 (hard update).
+        """
+        for target_param, online_param in zip(
+            self._target_mixing_network.parameters(),
+            self._online_mixing_network.parameters(),
+        ):
+            target_param.data.copy_(
+                tau * online_param.data + (1.0 - tau) * target_param.data
+            )
 
     def commit(self):
         drqn_configuration = methods.get_nested_dict_field(
@@ -270,11 +289,113 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         )
 
         episode_scores = []
-        for rollout in range(n_rollouts):
+        n_rollouts_per_target_swap = 200
+        for rollout in tqdm(range(n_rollouts)):
+            if not (rollout % n_rollouts_per_target_swap):
+                for agent in self._agents:
+                    agent.update_target_network_params()
+                self.update_target_network_params()
+
+            # ---- OPTIMIZATION PART ----
             if self._memory.ready():
-                sample = self._memory.sample_buffer()
+                (
+                    observations,
+                    actions,
+                    rewards,
+                    next_observations,
+                    dones,
+                    prev_actions,
+                    states,
+                    next_states,
+                ) = self._memory.sample_buffer()
+
+                self._optimizer.zero_grad()
 
                 # Train the network
+                t_observations = torch.tensor([observations], dtype=torch.float32)
+                t_actions = torch.tensor([actions], dtype=torch.int64)
+                t_rewards = torch.tensor([rewards], dtype=torch.float32)
+                t_next_observations = torch.tensor(
+                    [next_observations], dtype=torch.float32
+                )
+                t_dones = torch.tensor([dones], dtype=torch.int8)
+                t_prev_actions = torch.tensor([prev_actions], dtype=torch.int64)
+                t_states = torch.tensor([states], dtype=torch.float32)
+                t_next_states = torch.tensor([next_states], dtype=torch.float32)
+
+                multi_agent_q_vals = []
+                multi_agent_target_q_vals = []
+                for agent_id, agent in enumerate(self._agents):
+                    # Reset hidden and cell state in drqn along with prev_actions info
+                    agent.reset_intrinsic_lstm_params()
+
+                    t_agent_observations = t_observations[:, :, agent_id, :]
+                    t_agent_next_observations = t_next_observations[:, :, agent_id, :]
+
+                    t_agent_prev_actions = t_prev_actions[:, :, agent_id].unsqueeze(2)
+                    t_agent_actions = t_actions[:, :, agent_id].unsqueeze(2)
+
+                    t_agent_prev_actions_one_hot = torch.nn.functional.one_hot(
+                        t_agent_prev_actions.squeeze(2), num_classes=14
+                    )
+                    t_agent_actions_one_hot = torch.nn.functional.one_hot(
+                        t_agent_actions.squeeze(2), num_classes=14
+                    )
+
+                    q_vals = agent.estimate_q_values(
+                        t_agent_observations, t_agent_prev_actions_one_hot
+                    )
+                    multi_agent_q_vals.append(q_vals)
+
+                    with torch.no_grad():
+                        target_q_vals = agent.estimate_target_q_values(
+                            t_agent_next_observations, t_agent_actions_one_hot
+                        )
+                        multi_agent_target_q_vals.append(target_q_vals)
+
+                t_multi_agent_q_vals = torch.stack(multi_agent_q_vals, dim=0).transpose(
+                    0, 1
+                )
+                t_multi_agent_target_q_vals = torch.stack(
+                    multi_agent_target_q_vals, dim=0
+                ).transpose(0, 1)
+
+                actions_taken = t_actions.unsqueeze(
+                    -1
+                )  # shape now is (n_batches, n_agents, 1)
+                online_mixing_q_vals = t_multi_agent_q_vals.gather(
+                    dim=-1, index=actions_taken.squeeze(0)
+                )
+
+                q_tot = self._online_mixing_network(online_mixing_q_vals, t_states)
+
+                with torch.no_grad():
+                    max_actions = t_multi_agent_target_q_vals.argmax(dim=-1).unsqueeze(
+                        -1
+                    )
+                    target_mixing_q_vals = t_multi_agent_target_q_vals.gather(
+                        dim=-1, index=max_actions
+                    )
+                    target_q_tot = self._target_mixing_network(
+                        target_mixing_q_vals, t_next_states
+                    )
+
+                t_rewards_transposed = t_rewards.transpose(0, 1)
+                t_dones_transposed = t_dones.transpose(0, 1)
+                y_hat = t_rewards_transposed + (
+                    self._discount_factor * target_q_tot * (1 - t_dones_transposed)
+                )
+                y_hat = y_hat.detach()
+
+                loss = self._criterion(y_hat, q_tot)
+                loss.backward()
+
+                net_parameters = self._access_construct_parameters()
+                torch.nn.utils.clip_grad_norm_(net_parameters, 10.0)
+
+                self._optimizer.step()
+
+            # ---- DATA GATHER PART ----
 
             self._environment.reset()
             terminated = False
@@ -282,6 +403,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             prev_actions = None
 
             while not terminated:
+                # TODO: Add one-hot encoder of agent id to the observation
                 observations = self._environment.get_obs()
                 states = self._environment.get_state()
 
@@ -296,16 +418,21 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                     agent = self._agents[agent_id]
                     assert agent_id == agent._agent_unique_id
 
-                    agent_action = agent.act(observations)
+                    agent_observation = observations[agent_id]
+                    agent_action = agent.act(agent_observation)
+
+                    # TODO: change to masking approach
                     if agent_action not in available_actions_index:
                         agent_action = np.random.choice(available_actions_index)
 
                     actions.append(agent_action)
+                    agent.decrease_exploration()
 
                 reward, terminated, _ = self._environment.step(actions)
                 episode_return += reward
 
                 next_observations = self._environment.get_obs()
+                next_states = self._environment.get_state()
 
                 if prev_actions is not None:
                     data = [
@@ -316,6 +443,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                         terminated,
                         prev_actions,
                         states,
+                        next_states,
                     ]
                     self._memory.store_transition(data)
 
@@ -323,6 +451,8 @@ class QMIXSharedParamsConstruct(BaseConstruct):
 
             episode_scores.append(episode_return)
 
+        num_plot_args = [x for x in range(n_rollouts)]
+        methods.plot_learning_curve(num_plot_args, episode_scores)
         self._environment.close()
 
         return episode_return

@@ -31,17 +31,16 @@ class DRQNAgent:
         self._epsilon_dec = 0.99
 
         # Intrinsic non-const parameters
-        self._hidden_state = torch.zeros(1, self._online_drqn_network.hidden_state_dim)
-        self._cell_state = torch.zeros(1, self._online_drqn_network.hidden_state_dim)
+        self._hidden_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
+        self._cell_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
         self._prev_action = torch.zeros(1, len(self._action_space))
 
         self._target_hidden_state = torch.zeros(
-            1, self._online_drqn_network.hidden_state_dim
+            self._online_drqn_network.hidden_state_dim
         )
         self._target_cell_state = torch.zeros(
-            1, self._online_drqn_network.hidden_state_dim
+            self._online_drqn_network.hidden_state_dim
         )
-        self._target_prev_action = torch.zeros(1, len(self._action_space))
 
     def _access_config_params(self):
         self._epsilon = methods.get_nested_dict_field(
@@ -57,20 +56,18 @@ class DRQNAgent:
             keys=["exploration", "epsilon_dec", "choice"],
         )
 
-    def reset_intrinsic_drqn_params(self):
+    def reset_intrinsic_lstm_params(self):
         """Reset the agent's memory (LSTM states and previous action)"""
         self._access_config_params()
-        self._hidden_state = torch.zeros(1, self._online_drqn_network.hidden_state_dim)
-        self._cell_state = torch.zeros(1, self._online_drqn_network.hidden_state_dim)
-        self._prev_action = torch.zeros(1, len(self._action_space))
+        self._hidden_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
+        self._cell_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
 
         self._target_hidden_state = torch.zeros(
-            1, self._target_drqn_network.hidden_state_dim
+            self._target_drqn_network.hidden_state_dim
         )
         self._target_cell_state = torch.zeros(
-            1, self._target_drqn_network.hidden_state_dim
+            self._target_drqn_network.hidden_state_dim
         )
-        self._target_prev_action = torch.zeros(1, len(self._action_space))
 
     def update_target_network_params(self, tau=1.0):
         """
@@ -87,38 +84,37 @@ class DRQNAgent:
                 tau * online_param.data + (1.0 - tau) * target_param.data
             )
 
-    def update_epsilon(self):
+    def decrease_exploration(self):
         self._epsilon = max(self._epsilon_min, self._epsilon * self._epsilon_dec)
 
-    def estimate_q_values(self, observation: np.ndarray):
-        observation = torch.tensor([observation], dtype=torch.float).unsqueeze(0)
-        with torch.no_grad():
-            q_values, _, _ = self._online_drqn_network(
-                observation=observation,
-                prev_action=self._prev_action,
-                hidden_state=self._hidden_state,
-                cell_state=self._cell_state,
-            )
+    def estimate_q_values(self, observation: torch.Tensor, prev_action: torch.Tensor):
+        q_values, lstm_memory = self._online_drqn_network(
+            observation=observation,
+            prev_action=prev_action,
+            hidden_state=self._hidden_state,
+            cell_state=self._cell_state,
+        )
+        self._hidden_state, self._cell_state = lstm_memory
         return q_values
 
-    def estimate_target_q_values(self, target_observation: np.ndarray):
-        target_observation = torch.tensor(
-            [target_observation], dtype=torch.float
-        ).unsqueeze(0)
+    def estimate_target_q_values(
+        self, target_observation: torch.Tensor, prev_action: torch.Tensor
+    ):
         with torch.no_grad():
-            target_q_values, _, _ = self._target_drqn_network(
+            target_q_values, target_lstm_memory = self._target_drqn_network(
                 observation=target_observation,
-                prev_action=self._prev_action,
-                hidden_state=self._hidden_state,
-                cell_state=self._cell_state,
+                prev_action=prev_action,
+                hidden_state=self._target_hidden_state,
+                cell_state=self._target_cell_state,
             )
+            self._target_hidden_state, self._target_cell_state = target_lstm_memory
         return target_q_values
 
     def act(self, observation: np.ndarray):
         if np.random.random() > self._epsilon:
             observation = torch.tensor(observation, dtype=torch.float).unsqueeze(0)
 
-            q_values, updated_hidden, updated_cell = self._online_drqn_network(
+            q_values, lstm_memory = self._online_drqn_network(
                 observation,
                 self._prev_action,
                 self._hidden_state,
@@ -127,11 +123,10 @@ class DRQNAgent:
 
             action = torch.argmax(q_values).item()
 
-            self._hidden_state = updated_hidden
-            self._cell_state = updated_cell
+            self._hidden_state, self._cell_state = lstm_memory
             self._prev_action = torch.nn.functional.one_hot(
-                torch.tensor(action), num_classes=len(self._action_space)
-            ).float()
+                torch.tensor([action]), num_classes=len(self._action_space)
+            )
 
         else:
             # Random action selection
