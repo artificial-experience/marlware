@@ -67,7 +67,6 @@ class MixingNetwork(nn.Module):
         hidden_layer_biases,
         output_layer_biases,
     ):
-        # Reshape operation
         hidden_weights = hidden_layer_weights.view_as(self.hidden_layer.weight)
         output_weights = output_layer_weights.view_as(self.output_layer.weight)
         hidden_biases = hidden_layer_biases.view_as(self.hidden_layer.bias)
@@ -82,11 +81,9 @@ class MixingNetwork(nn.Module):
     def construct_network(self, num_agents: int):
         self._access_config_params()
 
-        self.hidden_layer = nn.Linear(
-            self._model_n_q_values * num_agents, self._model_hidden_layer_size
-        )
+        self.hidden_layer = nn.Linear(num_agents, self._model_hidden_layer_size)
         self.elu_activation = nn.ELU()
-        self.output_layer = nn.Linear(self._model_hidden_layer_size, 1)  # Output Q_tot
+        self.output_layer = nn.Linear(self._model_hidden_layer_size, 1)
 
         mixing_network_hidden_layer_weights = self.hidden_layer.weight.numel()
         mixing_network_output_layer_weights = self.output_layer.weight.numel()
@@ -117,15 +114,45 @@ class MixingNetwork(nn.Module):
             hypernetwork_output_biases,
         ) = self._biases_hypernetwork(state_representation)
 
-        self._update_network_params(
-            hidden_layer_weights=hypernetwork_hidden_weights,
-            output_layer_weights=hypernetwork_output_weights,
-            hidden_layer_biases=hypernetwork_hidden_biases,
-            output_layer_biases=hypernetwork_output_biases,
-        )
+        # Prepare hypernetwork outputs for mixing network parameters
+        hidden_weights_squeezed = hypernetwork_hidden_weights.squeeze(0)
+        output_weights_squeezed = hypernetwork_output_weights.squeeze(0)
 
-        output = self.hidden_layer(q_values)
-        output = self.elu_activation(output)
+        hidden_biases_squeezed = hypernetwork_hidden_biases.squeeze(0)
+        output_biases_squeezed = hypernetwork_output_biases.squeeze(0)
 
-        q_tot = self.output_layer(output)
-        return q_tot
+        collective_q_tot = []
+        for batch_id in range(q_values.size(0)):
+            # Use clone to create new layers with learned weights and biases
+            hidden_layer = nn.Linear(
+                self.hidden_layer.in_features, self.hidden_layer.out_features
+            )
+            hidden_layer.weight.data = hidden_weights_squeezed[batch_id].view_as(
+                hidden_layer.weight
+            )
+            hidden_layer.bias.data = hidden_biases_squeezed[batch_id].view_as(
+                hidden_layer.bias
+            )
+
+            output_layer = nn.Linear(
+                self.output_layer.in_features, self.output_layer.out_features
+            )
+            output_layer.weight.data = output_weights_squeezed[batch_id].view_as(
+                output_layer.weight
+            )
+            output_layer.bias.data = output_biases_squeezed[batch_id].view_as(
+                output_layer.bias
+            )
+
+            # Continue with forward pass
+            sample_q_values = q_values[batch_id, :, :]
+            prepared_sample_q_values = sample_q_values.reshape(-1)
+            output = hidden_layer(prepared_sample_q_values)
+            output = self.elu_activation(output)
+
+            q_tot = output_layer(output)
+            collective_q_tot.append(q_tot)
+
+        t_collective_q_tot = torch.stack(collective_q_tot, dim=0)
+
+        return t_collective_q_tot

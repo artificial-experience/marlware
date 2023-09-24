@@ -79,10 +79,24 @@ class DRQN(nn.Module):
         hidden_state: torch.Tensor,
         cell_state: torch.Tensor,
     ):
-        joint_input = torch.cat([observation, prev_action], axis=1)
-        x = self.mlp1(joint_input)
-        updated_hidden_state, updated_cell_state = self.rnn(
-            x, (hidden_state, cell_state)
-        )
-        q_values = self.mlp2(updated_hidden_state)
+        # Ensure that the tensors are 3-dimensional (batch size can be 1)
+        if len(observation.size()) < 3:
+            observation = observation.unsqueeze(0)
+        if len(prev_action.size()) < 3:
+            prev_action = prev_action.unsqueeze(0)
+
+        collective_input = torch.cat([observation, prev_action], axis=-1)
+        x = self.mlp1(collective_input)
+        x = x.squeeze(0)
+
+        updated_hidden_states = []
+        for batch_idx in range(x.size(0)):
+            updated_hidden_state, updated_cell_state = self.lstm(
+                x[batch_idx, :], (hidden_state, cell_state)
+            )
+            updated_hidden_states.append(updated_hidden_state)
+
+        t_updated_hidden_states = torch.stack(updated_hidden_states, 0)
+
+        q_values = self.mlp2(t_updated_hidden_states)
         return q_values, (updated_hidden_state, updated_cell_state)

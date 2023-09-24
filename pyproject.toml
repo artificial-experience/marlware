@@ -26,6 +26,8 @@ protobuf = "3.20"
 smac = {git = "https://github.com/oxwhirl/smac.git"}
 mypy = "^1.5.1"
 torchviz = "^0.0.2"
+matplotlib = "^3.8.0"
+tqdm = "^4.66.1"
 
 [build-system]
 requires = ["poetry-core"]
