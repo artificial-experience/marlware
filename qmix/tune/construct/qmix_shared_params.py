@@ -42,10 +42,13 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         # Default device set to cpu
         self._accelerator_device = "cpu"
 
+        # Parameters
+        self._params = None
+
         # Construct optimizer and criterion
         self._optimizer = None
         self._criterion = None
-        self._optimizer_step = 0
+        self._optimizer_step = None
 
     @classmethod
     def from_construct_registry_directive(cls, construct_registry_directive: str):
@@ -106,8 +109,10 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         )
         return instance
 
-    def _instantiate_optimizer_and_criterion(self, parameters, learning_rate: float):
-        self._optimizer = torch.optim.Adam(params=parameters, lr=learning_rate)
+    def _instantiate_optimizer_and_criterion(self):
+        self._optimizer = torch.optim.RMSprop(
+            params=self._params, lr=self._learning_rate
+        )
         self._criterion = torch.nn.MSELoss()
 
     def _instantiate_factorisation_network(
@@ -268,29 +273,28 @@ class QMIXSharedParamsConstruct(BaseConstruct):
 
         self._instantiate_env(environment_configuration=environment_configuration)
         self._instantiate_replay_memory(memory_configuration=memory_configuration)
+
+        self._update_construct_parameters()
+        self._instantiate_optimizer_and_criterion()
+
         self._check_construct()
 
         return self
 
-    def _access_construct_parameters(self):
+    def _update_construct_parameters(self):
         parameters = []
 
         parameters += list(self._shared_target_drqn_network.parameters())
+        parameters += list(self._target_mixing_network.parameters())
         parameters += list(self._shared_online_drqn_network.parameters())
         parameters += list(self._online_mixing_network.parameters())
-        parameters += list(self._target_mixing_network.parameters())
 
-        return parameters
+        self._params = parameters
 
     # TODO: break down into smaller chunks
     def optimize(self, n_rollouts: int, steps_per_rollout_limit: int):
-        construct_params = self._access_construct_parameters()
-        self._instantiate_optimizer_and_criterion(
-            parameters=construct_params, learning_rate=self._learning_rate
-        )
-
         episode_scores = []
-        n_rollouts_per_target_swap = 200
+        n_rollouts_per_target_swap = 100
         for rollout in tqdm(range(n_rollouts)):
             if not (rollout % n_rollouts_per_target_swap):
                 for agent in self._agents:
@@ -310,8 +314,6 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                     next_states,
                 ) = self._memory.sample_buffer()
 
-                self._optimizer.zero_grad()
-
                 # Train the network
                 t_observations = torch.tensor([observations], dtype=torch.float32)
                 t_actions = torch.tensor([actions], dtype=torch.int64)
@@ -319,7 +321,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 t_next_observations = torch.tensor(
                     [next_observations], dtype=torch.float32
                 )
-                t_dones = torch.tensor([dones], dtype=torch.int8)
+                t_dones = torch.tensor([dones], dtype=torch.float32)
                 t_prev_actions = torch.tensor([prev_actions], dtype=torch.int64)
                 t_states = torch.tensor([states], dtype=torch.float32)
                 t_next_states = torch.tensor([next_states], dtype=torch.float32)
@@ -356,11 +358,10 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                     )
                     multi_agent_q_vals.append(q_vals)
 
-                    with torch.no_grad():
-                        target_q_vals = agent.estimate_target_q_values(
-                            t_agent_next_observations, t_agent_actions_one_hot
-                        )
-                        multi_agent_target_q_vals.append(target_q_vals)
+                    target_q_vals = agent.estimate_target_q_values(
+                        t_agent_next_observations, t_agent_actions_one_hot
+                    )
+                    multi_agent_target_q_vals.append(target_q_vals)
 
                 t_multi_agent_q_vals = torch.stack(multi_agent_q_vals, dim=0).transpose(
                     0, 1
@@ -369,26 +370,22 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                     multi_agent_target_q_vals, dim=0
                 ).transpose(0, 1)
 
-                actions_taken = t_actions.unsqueeze(
+                prev_actions_taken = t_prev_actions.unsqueeze(
                     -1
                 )  # shape now is (n_batches, n_agents, 1)
                 online_mixing_q_vals = t_multi_agent_q_vals.gather(
-                    dim=-1, index=actions_taken.squeeze(0)
+                    dim=-1, index=prev_actions_taken.squeeze(0)
                 )
 
                 q_tot = self._online_mixing_network(online_mixing_q_vals, t_states)
 
-                with torch.no_grad():
-                    max_actions = t_multi_agent_target_q_vals.argmax(dim=-1).unsqueeze(
-                        -1
-                    )
-                    target_mixing_q_vals = t_multi_agent_target_q_vals.gather(
-                        dim=-1, index=max_actions
-                    )
-                    # target_q_tot = self._target_mixing_network(
-                    target_q_tot = self._online_mixing_network(
-                        target_mixing_q_vals, t_next_states
-                    )
+                max_actions = t_multi_agent_target_q_vals.argmax(dim=-1).unsqueeze(-1)
+                target_mixing_q_vals = t_multi_agent_target_q_vals.gather(
+                    dim=-1, index=max_actions
+                )
+                target_q_tot = self._target_mixing_network(
+                    target_mixing_q_vals, t_next_states
+                )
 
                 t_rewards_transposed = t_rewards.transpose(0, 1)
                 t_dones_transposed = t_dones.transpose(0, 1)
@@ -397,11 +394,11 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 )
                 y_hat = y_hat.detach()
 
-                loss = self._criterion(y_hat, q_tot)
-                loss.backward()
+                loss = self._criterion(q_tot, y_hat)
 
-                net_parameters = self._access_construct_parameters()
-                torch.nn.utils.clip_grad_norm_(net_parameters, 10.0)
+                self._optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self._params, 10.0)
 
                 self._optimizer.step()
 
@@ -428,7 +425,9 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                     assert agent_id == agent._agent_unique_id
                     agent_one_hot = agent.access_agent_one_hot_id()
 
-                    agent_observation = torch.tensor(observations[agent_id])
+                    agent_observation = torch.tensor(
+                        observations[agent_id], dtype=torch.float32
+                    )
                     agent_observation = torch.cat(
                         [agent_observation, agent_one_hot], axis=0
                     )
