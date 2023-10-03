@@ -47,13 +47,13 @@ class DRQN(nn.Module):
             nn.init.xavier_uniform_(x.weight)
             x.bias.data.fill_(0.01)
 
-    def construct_network(self):
+    def construct_network(self, num_agents: int):
         self._access_config_params()
 
         # Initial MLP: (observation + last action one hot encoded) -> embedding
         self.mlp1 = nn.Sequential(
             nn.Linear(
-                self._model_observation_size + self._model_n_actions,
+                self._model_observation_size + self._model_n_actions + num_agents,
                 self._model_embedding_size,
             ),
             nn.ReLU(),

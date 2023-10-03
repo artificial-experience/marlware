@@ -13,8 +13,10 @@ class DRQNAgent:
         num_actions: int,
         target_drqn_network: DRQN,
         online_drqn_network: DRQN,
+        num_agents: int,
     ):
-        self._agent_unique_id = agent_unique_id
+        self._agent_unique_id = torch.tensor(agent_unique_id)
+        self._num_agents = num_agents
         self._agent_configuration = agent_configuration
 
         # Online and target nets
@@ -85,9 +87,18 @@ class DRQNAgent:
             )
 
     def decrease_exploration(self):
+        """Decrease exploration parameters"""
         self._epsilon = max(self._epsilon_min, self._epsilon * self._epsilon_dec)
 
+    def access_agent_one_hot_id(self):
+        """Access one hot id for the agent - that is added to the observation"""
+        agent_one_hot_id = torch.nn.functional.one_hot(
+            self._agent_unique_id, num_classes=self._num_agents
+        )
+        return agent_one_hot_id
+
     def estimate_q_values(self, observation: torch.Tensor, prev_action: torch.Tensor):
+        """Estiamte Q onlie action value functions"""
         q_values, lstm_memory = self._online_drqn_network(
             observation=observation,
             prev_action=prev_action,
@@ -100,6 +111,7 @@ class DRQNAgent:
     def estimate_target_q_values(
         self, target_observation: torch.Tensor, prev_action: torch.Tensor
     ):
+        """Estiamte target action value functions"""
         with torch.no_grad():
             target_q_values, target_lstm_memory = self._target_drqn_network(
                 observation=target_observation,
@@ -111,6 +123,7 @@ class DRQNAgent:
         return target_q_values
 
     def act(self, observation: np.ndarray):
+        """Produce epsilon-greedy action given observation"""
         if np.random.random() > self._epsilon:
             observation = torch.tensor(observation, dtype=torch.float).unsqueeze(0)
 
