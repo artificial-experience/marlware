@@ -132,10 +132,10 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         # Create target and online networks
         self._shared_target_drqn_network = DRQN(
             config=drqn_configuration
-        ).construct_network()
+        ).construct_network(num_agents=num_agents)
         self._shared_online_drqn_network = DRQN(
             config=drqn_configuration
-        ).construct_network()
+        ).construct_network(num_agents=num_agents)
 
         self._agents = [
             DRQNAgent(
@@ -144,6 +144,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 num_actions=num_actions,
                 target_drqn_network=self._shared_target_drqn_network,
                 online_drqn_network=self._shared_online_drqn_network,
+                num_agents=num_agents,
             )
             for identifier in range(num_agents)
         ]
@@ -328,9 +329,17 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 for agent_id, agent in enumerate(self._agents):
                     # Reset hidden and cell state in drqn along with prev_actions info
                     agent.reset_intrinsic_lstm_params()
+                    agent_one_hot = agent.access_agent_one_hot_id().repeat(1, 32, 1)
 
                     t_agent_observations = t_observations[:, :, agent_id, :]
                     t_agent_next_observations = t_next_observations[:, :, agent_id, :]
+
+                    t_agent_observations = torch.cat(
+                        [t_agent_observations, agent_one_hot], axis=2
+                    )
+                    t_agent_next_observations = torch.cat(
+                        [t_agent_next_observations, agent_one_hot], axis=2
+                    )
 
                     t_agent_prev_actions = t_prev_actions[:, :, agent_id].unsqueeze(2)
                     t_agent_actions = t_actions[:, :, agent_id].unsqueeze(2)
@@ -376,7 +385,8 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                     target_mixing_q_vals = t_multi_agent_target_q_vals.gather(
                         dim=-1, index=max_actions
                     )
-                    target_q_tot = self._target_mixing_network(
+                    # target_q_tot = self._target_mixing_network(
+                    target_q_tot = self._online_mixing_network(
                         target_mixing_q_vals, t_next_states
                     )
 
@@ -403,7 +413,6 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             prev_actions = None
 
             while not terminated:
-                # TODO: Add one-hot encoder of agent id to the observation
                 observations = self._environment.get_obs()
                 states = self._environment.get_state()
 
@@ -417,8 +426,12 @@ class QMIXSharedParamsConstruct(BaseConstruct):
 
                     agent = self._agents[agent_id]
                     assert agent_id == agent._agent_unique_id
+                    agent_one_hot = agent.access_agent_one_hot_id()
 
-                    agent_observation = observations[agent_id]
+                    agent_observation = torch.tensor(observations[agent_id])
+                    agent_observation = torch.cat(
+                        [agent_observation, agent_one_hot], axis=0
+                    )
                     agent_action = agent.act(agent_observation)
 
                     # TODO: change to masking approach
