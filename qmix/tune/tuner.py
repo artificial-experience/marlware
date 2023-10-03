@@ -37,4 +37,6 @@ class Tuner:
     def fit(self):
         """Start rollout and optimize trainable construct"""
         torch.autograd.set_detect_anomaly(True)
-        self._trainable_construct.optimize(n_rollouts=9000, steps_per_rollout_limit=120)
+        self._trainable_construct.optimize(
+            n_rollouts=14000, steps_per_rollout_limit=120
+        )

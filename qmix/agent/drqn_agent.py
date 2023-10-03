@@ -122,7 +122,7 @@ class DRQNAgent:
             self._target_hidden_state, self._target_cell_state = target_lstm_memory
         return target_q_values
 
-    def act(self, observation: np.ndarray):
+    def act(self, observation: np.ndarray, available_actions: np.ndarray):
         """Produce epsilon-greedy action given observation"""
         if np.random.random() > self._epsilon:
             observation = torch.tensor(observation, dtype=torch.float).unsqueeze(0)
@@ -134,7 +134,12 @@ class DRQNAgent:
                 self._cell_state,
             )
 
-            action = torch.argmax(q_values).item()
+            # Mask unavailable actions
+            masked_q_values = q_values.clone()
+            masked_q_values[available_actions == 0.0] = -float("inf")
+
+            # Select action with the highest Q-value among available actions
+            action = torch.argmax(masked_q_values).item()
 
             self._hidden_state, self._cell_state = lstm_memory
             self._prev_action = torch.nn.functional.one_hot(
@@ -142,7 +147,8 @@ class DRQNAgent:
             )
 
         else:
-            # Random action selection
-            action = np.random.choice(self._action_space)
+            # Random action selection among available actions
+            available_actions = np.nonzero(available_actions)[0]
+            action = np.random.choice(available_actions)
 
         return action

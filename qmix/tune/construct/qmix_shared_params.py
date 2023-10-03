@@ -177,14 +177,27 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         prev_actions_field = "prev_actions"
         prev_actions_vals = np.zeros([max_size, 8], dtype=np.int64)
 
+        avail_actions_field = "avail_actions"
+        avail_actions_vals = np.zeros([max_size, 8, 14], dtype=np.int64)
+
         states_field = "states"
         states_vals = np.zeros([max_size, 168], dtype=np.float32)
 
         next_states_field = "next_states"
         next_states_vals = np.zeros([max_size, 168], dtype=np.float32)
 
-        extra_fields = (prev_actions_field, states_field, next_states_field)
-        extra_vals = (prev_actions_vals, states_vals, next_states_vals)
+        extra_fields = (
+            prev_actions_field,
+            states_field,
+            next_states_field,
+            avail_actions_field,
+        )
+        extra_vals = (
+            prev_actions_vals,
+            states_vals,
+            next_states_vals,
+            avail_actions_vals,
+        )
 
         observation_shape = (80,)
         self._memory = initialize_memory(
@@ -312,19 +325,37 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                     prev_actions,
                     states,
                     next_states,
+                    avail_actions,
                 ) = self._memory.sample_buffer()
 
                 # Train the network
-                t_observations = torch.tensor([observations], dtype=torch.float32)
-                t_actions = torch.tensor([actions], dtype=torch.int64)
-                t_rewards = torch.tensor([rewards], dtype=torch.float32)
+                t_observations = torch.tensor([observations], dtype=torch.float32).to(
+                    self._accelerator_device
+                )
+                t_actions = torch.tensor([actions], dtype=torch.int64).to(
+                    self._accelerator_device
+                )
+                t_rewards = torch.tensor([rewards], dtype=torch.float32).to(
+                    self._accelerator_device
+                )
                 t_next_observations = torch.tensor(
                     [next_observations], dtype=torch.float32
+                ).to(self._accelerator_device)
+                t_dones = torch.tensor([dones], dtype=torch.float32).to(
+                    self._accelerator_device
                 )
-                t_dones = torch.tensor([dones], dtype=torch.float32)
-                t_prev_actions = torch.tensor([prev_actions], dtype=torch.int64)
-                t_states = torch.tensor([states], dtype=torch.float32)
-                t_next_states = torch.tensor([next_states], dtype=torch.float32)
+                t_prev_actions = torch.tensor([prev_actions], dtype=torch.int64).to(
+                    self._accelerator_device
+                )
+                t_states = torch.tensor([states], dtype=torch.float32).to(
+                    self._accelerator_device
+                )
+                t_next_states = torch.tensor([next_states], dtype=torch.float32).to(
+                    self._accelerator_device
+                )
+                t_avail_actions = torch.tensor([avail_actions], dtype=torch.float32).to(
+                    self._accelerator_device
+                )
 
                 multi_agent_q_vals = []
                 multi_agent_target_q_vals = []
@@ -361,6 +392,10 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                     target_q_vals = agent.estimate_target_q_values(
                         t_agent_next_observations, t_agent_actions_one_hot
                     )
+                    # Mask not available actions
+                    agent_avail_actions = t_avail_actions[:, :, agent_id, :].squeeze(0)
+                    target_q_vals[agent_avail_actions == 0] = -9999999.0
+
                     multi_agent_target_q_vals.append(target_q_vals)
 
                 t_multi_agent_q_vals = torch.stack(multi_agent_q_vals, dim=0).transpose(
@@ -414,11 +449,14 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 states = self._environment.get_state()
 
                 actions = []
+                avail_actions = []
                 num_agents = len(self._agents)
                 for agent_id in range(num_agents):
                     available_actions = self._environment.get_avail_agent_actions(
                         agent_id
                     )
+
+                    avail_actions.append(available_actions)
                     available_actions_index = np.nonzero(available_actions)[0]
 
                     agent = self._agents[agent_id]
@@ -431,7 +469,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                     agent_observation = torch.cat(
                         [agent_observation, agent_one_hot], axis=0
                     )
-                    agent_action = agent.act(agent_observation)
+                    agent_action = agent.act(agent_observation, available_actions)
 
                     # TODO: change to masking approach
                     if agent_action not in available_actions_index:
@@ -456,6 +494,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                         prev_actions,
                         states,
                         next_states,
+                        avail_actions,
                     ]
                     self._memory.store_transition(data)
 
