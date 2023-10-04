@@ -9,14 +9,17 @@ construct-directive:
       type: str
       choice: QMIXSharedParamsConstruct
 
-tuner-directive::
+tuner-directive:
   rollout_configuration:
     steps_per_rollout_limit:
       type: int
       choice: 120
     n_rollouts:
       type: int
-      choice: 100_000
+      choice: 1000
+    eval_schedule:
+      type: int
+      choice: 100
   checkpoint_configuration:
     checkpoint_frequency:
       type: int

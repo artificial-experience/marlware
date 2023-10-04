@@ -1,6 +1,3 @@
-from pathlib import Path
-
-import click
 from common import constants
 from common import methods
 from tune import Tuner
@@ -59,11 +56,12 @@ class Tune:
         self._set_trial_configuration()
         self._prepare_tuner()
 
-        results = self._tuner.fit()
+        results, n_data_points = self._tuner.fit()
 
         if results:
-            # make some logging and stuff
             self._results = results
+            num_plot_args = [x for x in range(n_data_points)]
+            methods.plot_learning_curve(num_plot_args, self._results)
         else:
             pass
 

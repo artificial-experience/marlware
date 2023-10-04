@@ -1,1 +1,1 @@
-from .qmix_shared_params import QMIXSharedParamsConstruct
+from .qmix import QMIXSharedParamsConstruct
