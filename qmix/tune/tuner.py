@@ -1,7 +1,8 @@
 import torch
-from torchviz import make_dot
+from tqdm import tqdm
 
 from .trainable import TrainableConstruct
+from qmix.common import methods
 
 
 class Tuner:
@@ -21,6 +22,8 @@ class Tuner:
         self.construct_directive = construct_directive
         self.tuner_directive = tuner_directive
 
+        self._n_rollouts = None
+        self._eval_schedule = None
         self._trainable_construct = None
 
     @classmethod
@@ -34,9 +37,37 @@ class Tuner:
         ).delegate()
         return instance
 
+    def _set_rollout_n_eval_params(self):
+        n_rollouts = methods.get_nested_dict_field(
+            directive=self.tuner_directive,
+            keys=["rollout_configuration", "n_rollouts", "choice"],
+        )
+        eval_schedule = methods.get_nested_dict_field(
+            directive=self.tuner_directive,
+            keys=["rollout_configuration", "eval_schedule", "choice"],
+        )
+        self._n_rollouts = n_rollouts
+        self._eval_schedule = eval_schedule
+
     def fit(self):
         """Start rollout and optimize trainable construct"""
         torch.autograd.set_detect_anomaly(True)
-        self._trainable_construct.optimize(
-            n_rollouts=14000, steps_per_rollout_limit=120
-        )
+        self._set_rollout_n_eval_params()
+
+        mean_results = []
+        for n_rollout in tqdm(range(self._n_rollouts), desc="Training Phase: "):
+            self._trainable_construct.update_target_networks(
+                n_rollout, n_rollouts_per_target_swap=200
+            )
+
+            if n_rollout % self._eval_schedule == 0:
+                mean_result = self._trainable_construct.evaluate(n_games=20)
+                mean_results.append(mean_result)
+
+            if self._trainable_construct.memory_ready():
+                self._trainable_construct.optimize(n_rollout)
+
+            self._trainable_construct.collect_rollouts()
+
+        self._trainable_construct.close_env()
+        return mean_results, (self._n_rollouts // self._eval_schedule)

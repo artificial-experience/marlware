@@ -304,206 +304,263 @@ class QMIXSharedParamsConstruct(BaseConstruct):
 
         self._params = parameters
 
-    # TODO: break down into smaller chunks
-    def optimize(self, n_rollouts: int, steps_per_rollout_limit: int):
-        episode_scores = []
-        n_rollouts_per_target_swap = 100
-        for rollout in tqdm(range(n_rollouts)):
-            if not (rollout % n_rollouts_per_target_swap):
-                for agent in self._agents:
-                    agent.update_target_network_params()
-                self.update_target_network_params()
-
-            # ---- OPTIMIZATION PART ----
-            if self._memory.ready():
-                (
-                    observations,
-                    actions,
-                    rewards,
-                    next_observations,
-                    dones,
-                    prev_actions,
-                    states,
-                    next_states,
-                    avail_actions,
-                ) = self._memory.sample_buffer()
-
-                # Train the network
-                t_observations = torch.tensor([observations], dtype=torch.float32).to(
-                    self._accelerator_device
-                )
-                t_actions = torch.tensor([actions], dtype=torch.int64).to(
-                    self._accelerator_device
-                )
-                t_rewards = torch.tensor([rewards], dtype=torch.float32).to(
-                    self._accelerator_device
-                )
-                t_next_observations = torch.tensor(
-                    [next_observations], dtype=torch.float32
-                ).to(self._accelerator_device)
-                t_dones = torch.tensor([dones], dtype=torch.float32).to(
-                    self._accelerator_device
-                )
-                t_prev_actions = torch.tensor([prev_actions], dtype=torch.int64).to(
-                    self._accelerator_device
-                )
-                t_states = torch.tensor([states], dtype=torch.float32).to(
-                    self._accelerator_device
-                )
-                t_next_states = torch.tensor([next_states], dtype=torch.float32).to(
-                    self._accelerator_device
-                )
-                t_avail_actions = torch.tensor([avail_actions], dtype=torch.float32).to(
-                    self._accelerator_device
-                )
-
-                multi_agent_q_vals = []
-                multi_agent_target_q_vals = []
-                for agent_id, agent in enumerate(self._agents):
-                    # Reset hidden and cell state in drqn along with prev_actions info
-                    agent.reset_intrinsic_lstm_params()
-                    agent_one_hot = agent.access_agent_one_hot_id().repeat(1, 32, 1)
-
-                    t_agent_observations = t_observations[:, :, agent_id, :]
-                    t_agent_next_observations = t_next_observations[:, :, agent_id, :]
-
-                    t_agent_observations = torch.cat(
-                        [t_agent_observations, agent_one_hot], axis=2
-                    )
-                    t_agent_next_observations = torch.cat(
-                        [t_agent_next_observations, agent_one_hot], axis=2
-                    )
-
-                    t_agent_prev_actions = t_prev_actions[:, :, agent_id].unsqueeze(2)
-                    t_agent_actions = t_actions[:, :, agent_id].unsqueeze(2)
-
-                    t_agent_prev_actions_one_hot = torch.nn.functional.one_hot(
-                        t_agent_prev_actions.squeeze(2), num_classes=14
-                    )
-                    t_agent_actions_one_hot = torch.nn.functional.one_hot(
-                        t_agent_actions.squeeze(2), num_classes=14
-                    )
-
-                    q_vals = agent.estimate_q_values(
-                        t_agent_observations, t_agent_prev_actions_one_hot
-                    )
-                    multi_agent_q_vals.append(q_vals)
-
-                    target_q_vals = agent.estimate_target_q_values(
-                        t_agent_next_observations, t_agent_actions_one_hot
-                    )
-                    # Mask not available actions
-                    agent_avail_actions = t_avail_actions[:, :, agent_id, :].squeeze(0)
-                    target_q_vals[agent_avail_actions == 0] = -9999999.0
-
-                    multi_agent_target_q_vals.append(target_q_vals)
-
-                t_multi_agent_q_vals = torch.stack(multi_agent_q_vals, dim=0).transpose(
-                    0, 1
-                )
-                t_multi_agent_target_q_vals = torch.stack(
-                    multi_agent_target_q_vals, dim=0
-                ).transpose(0, 1)
-
-                prev_actions_taken = t_prev_actions.unsqueeze(
-                    -1
-                )  # shape now is (n_batches, n_agents, 1)
-                online_mixing_q_vals = t_multi_agent_q_vals.gather(
-                    dim=-1, index=prev_actions_taken.squeeze(0)
-                )
-
-                q_tot = self._online_mixing_network(online_mixing_q_vals, t_states)
-
-                max_actions = t_multi_agent_target_q_vals.argmax(dim=-1).unsqueeze(-1)
-                target_mixing_q_vals = t_multi_agent_target_q_vals.gather(
-                    dim=-1, index=max_actions
-                )
-                target_q_tot = self._target_mixing_network(
-                    target_mixing_q_vals, t_next_states
-                )
-
-                t_rewards_transposed = t_rewards.transpose(0, 1)
-                t_dones_transposed = t_dones.transpose(0, 1)
-                y_hat = t_rewards_transposed + (
-                    self._discount_factor * target_q_tot * (1 - t_dones_transposed)
-                )
-                y_hat = y_hat.detach()
-
-                loss = self._criterion(q_tot, y_hat)
-
-                self._optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self._params, 10.0)
-
-                self._optimizer.step()
-
-            # ---- DATA GATHER PART ----
-
-            self._environment.reset()
-            terminated = False
-            episode_return = 0
-            prev_actions = None
-
-            while not terminated:
-                observations = self._environment.get_obs()
-                states = self._environment.get_state()
-
-                actions = []
-                avail_actions = []
-                num_agents = len(self._agents)
-                for agent_id in range(num_agents):
-                    available_actions = self._environment.get_avail_agent_actions(
-                        agent_id
-                    )
-
-                    avail_actions.append(available_actions)
-                    available_actions_index = np.nonzero(available_actions)[0]
-
-                    agent = self._agents[agent_id]
-                    assert agent_id == agent._agent_unique_id
-                    agent_one_hot = agent.access_agent_one_hot_id()
-
-                    agent_observation = torch.tensor(
-                        observations[agent_id], dtype=torch.float32
-                    )
-                    agent_observation = torch.cat(
-                        [agent_observation, agent_one_hot], axis=0
-                    )
-                    agent_action = agent.act(agent_observation, available_actions)
-
-                    # TODO: change to masking approach
-                    if agent_action not in available_actions_index:
-                        agent_action = np.random.choice(available_actions_index)
-
-                    actions.append(agent_action)
-                    agent.decrease_exploration()
-
-                reward, terminated, _ = self._environment.step(actions)
-                episode_return += reward
-
-                next_observations = self._environment.get_obs()
-                next_states = self._environment.get_state()
-
-                if prev_actions is not None:
-                    data = [
-                        observations,
-                        actions,
-                        reward,
-                        next_observations,
-                        terminated,
-                        prev_actions,
-                        states,
-                        next_states,
-                        avail_actions,
-                    ]
-                    self._memory.store_transition(data)
-
-                prev_actions = actions
-
-            episode_scores.append(episode_return)
-
-        num_plot_args = [x for x in range(n_rollouts)]
-        methods.plot_learning_curve(num_plot_args, episode_scores)
+    def close_env(self):
         self._environment.close()
 
-        return episode_return
+    # ==================================
+    # Section 1: Rollout Collecting
+    # ==================================
+
+    def _initialize_environment(self):
+        self._environment.reset()
+
+    def _fetch_environment_details(self):
+        observations = self._environment.get_obs()
+        states = self._environment.get_state()
+        return observations, states
+
+    def _get_agent_actions(self, observations, evaluate=False):
+        actions = []
+        avail_actions = []
+        num_agents = len(self._agents)
+
+        for agent_id in range(num_agents):
+            available_actions = self._environment.get_avail_agent_actions(agent_id)
+            avail_actions.append(available_actions)
+            available_actions_index = np.nonzero(available_actions)[0]
+
+            agent = self._agents[agent_id]
+            agent_observation = self._prepare_agent_observation(
+                observations[agent_id], agent
+            )
+            agent_action = agent.act(agent_observation, available_actions, evaluate)
+
+            if agent_action not in available_actions_index:
+                agent_action = np.random.choice(available_actions_index)
+
+            actions.append(agent_action)
+            agent.decrease_exploration()
+
+        return actions, avail_actions
+
+    def _prepare_agent_observation(self, observation, agent):
+        agent_one_hot = agent.access_agent_one_hot_id()
+        agent_observation = torch.tensor(observation, dtype=torch.float32)
+        agent_observation = torch.cat([agent_observation, agent_one_hot], axis=0)
+        return agent_observation
+
+    def _execute_actions(self, actions):
+        reward, terminated, _ = self._environment.step(actions)
+        return reward, terminated
+
+    def _store_transitions(
+        self,
+        observations,
+        actions,
+        reward,
+        next_observations,
+        terminated,
+        prev_actions,
+        states,
+        next_states,
+        avail_actions,
+    ):
+        if prev_actions is not None:
+            data = [
+                observations,
+                actions,
+                reward,
+                next_observations,
+                terminated,
+                prev_actions,
+                states,
+                next_states,
+                avail_actions,
+            ]
+            self._memory.store_transition(data)
+
+    def memory_ready(self):
+        return self._memory.ready()
+
+    def collect_rollouts(self):
+        self._initialize_environment()
+        terminated = False
+        prev_actions = None
+        next_observations = None
+        next_states = None
+
+        while not terminated:
+            observations, states = self._fetch_environment_details()
+            actions, avail_actions = self._get_agent_actions(observations)
+
+            reward, terminated = self._execute_actions(actions)
+
+            next_observations, next_states = self._fetch_environment_details()
+
+            self._store_transitions(
+                observations,
+                actions,
+                reward,
+                next_observations,
+                terminated,
+                prev_actions,
+                states,
+                next_states,
+                avail_actions,
+            )
+            prev_actions = actions
+
+    # ==================================
+    # Section 2: Optimization
+    # ==================================
+
+    def _convert_to_tensors(self, sample_data):
+        (
+            observations,
+            actions,
+            rewards,
+            next_observations,
+            dones,
+            prev_actions,
+            states,
+            next_states,
+            avail_actions,
+        ) = sample_data
+        device = self._accelerator_device
+        dtype = torch.float32
+        tensors = {
+            "observations": torch.tensor([observations], dtype=dtype).to(device),
+            "actions": torch.tensor([actions], dtype=torch.int64).to(device),
+            "rewards": torch.tensor([rewards], dtype=dtype).to(device),
+            "next_observations": torch.tensor([next_observations], dtype=dtype).to(
+                device
+            ),
+            "dones": torch.tensor([dones], dtype=dtype).to(device),
+            "prev_actions": torch.tensor([prev_actions], dtype=torch.int64).to(device),
+            "states": torch.tensor([states], dtype=dtype).to(device),
+            "next_states": torch.tensor([next_states], dtype=dtype).to(device),
+            "avail_actions": torch.tensor([avail_actions], dtype=dtype).to(device),
+        }
+        return tensors
+
+    def _get_multi_agent_q_values(self, tensors):
+        multi_agent_q_vals = []
+        multi_agent_target_q_vals = []
+        for agent_id, agent in enumerate(self._agents):
+            agent_q_vals, target_q_vals = self._get_agent_q_values(
+                agent_id, agent, tensors
+            )
+            multi_agent_q_vals.append(agent_q_vals)
+            multi_agent_target_q_vals.append(target_q_vals)
+        return multi_agent_q_vals, multi_agent_target_q_vals
+
+    def _get_agent_q_values(self, agent_id, agent, tensors):
+        # Implement the logic to get the agent's Q values and target Q values
+        agent.reset_intrinsic_lstm_params()
+        agent_one_hot = agent.access_agent_one_hot_id().repeat(1, 32, 1)
+
+        t_agent_observations = tensors["observations"][:, :, agent_id, :]
+        t_agent_next_observations = tensors["next_observations"][:, :, agent_id, :]
+
+        t_agent_observations = torch.cat([t_agent_observations, agent_one_hot], axis=2)
+        t_agent_next_observations = torch.cat(
+            [t_agent_next_observations, agent_one_hot], axis=2
+        )
+
+        t_agent_prev_actions = tensors["prev_actions"][:, :, agent_id].unsqueeze(2)
+        t_agent_actions = tensors["actions"][:, :, agent_id].unsqueeze(2)
+
+        t_agent_prev_actions_one_hot = torch.nn.functional.one_hot(
+            t_agent_prev_actions.squeeze(2), num_classes=14
+        )
+        t_agent_actions_one_hot = torch.nn.functional.one_hot(
+            t_agent_actions.squeeze(2), num_classes=14
+        )
+
+        q_vals = agent.estimate_q_values(
+            t_agent_observations, t_agent_prev_actions_one_hot
+        )
+        target_q_vals = agent.estimate_target_q_values(
+            t_agent_next_observations, t_agent_actions_one_hot
+        )
+
+        agent_avail_actions = tensors["avail_actions"][:, :, agent_id, :].squeeze(0)
+        target_q_vals[agent_avail_actions == 0] = -9999999.0
+
+        return q_vals, target_q_vals
+
+    def _calculate_loss(self, tensors, multi_agent_q_vals, multi_agent_target_q_vals):
+        t_multi_agent_q_vals = torch.stack(multi_agent_q_vals, dim=0).transpose(0, 1)
+        t_multi_agent_target_q_vals = torch.stack(
+            multi_agent_target_q_vals, dim=0
+        ).transpose(0, 1)
+
+        prev_actions_taken = tensors["prev_actions"].unsqueeze(-1)
+        online_mixing_q_vals = t_multi_agent_q_vals.gather(
+            dim=-1, index=prev_actions_taken.squeeze(0)
+        )
+
+        q_tot = self._online_mixing_network(online_mixing_q_vals, tensors["states"])
+
+        max_actions = t_multi_agent_target_q_vals.argmax(dim=-1).unsqueeze(-1)
+        target_mixing_q_vals = t_multi_agent_target_q_vals.gather(
+            dim=-1, index=max_actions
+        )
+        target_q_tot = self._target_mixing_network(
+            target_mixing_q_vals, tensors["next_states"]
+        )
+
+        t_rewards_transposed = tensors["rewards"].transpose(0, 1)
+        t_dones_transposed = tensors["dones"].transpose(0, 1)
+        y_hat = t_rewards_transposed + (
+            self._discount_factor * target_q_tot * (1 - t_dones_transposed)
+        )
+        y_hat = y_hat.detach()
+
+        loss = self._criterion(q_tot, y_hat)
+        return loss
+
+    def _backpropagate(self, loss):
+        self._optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self._params, 10.0)
+        self._optimizer.step()
+
+    def update_target_networks(self, n_rollout, n_rollouts_per_target_swap):
+        if n_rollout % n_rollouts_per_target_swap == 0:
+            for agent in self._agents:
+                agent.update_target_network_params()
+            self.update_target_network_params()
+
+    def optimize(self, n_rollout: int):
+        sample_data = self._memory.sample_buffer()
+        tensors = self._convert_to_tensors(sample_data)
+        multi_agent_q_vals, multi_agent_target_q_vals = self._get_multi_agent_q_values(
+            tensors
+        )
+
+        loss = self._calculate_loss(
+            tensors, multi_agent_q_vals, multi_agent_target_q_vals
+        )
+        self._backpropagate(loss)
+
+    # ==================================
+    # Section 3: Eval
+    # ==================================
+
+    def evaluate(self, n_games: int):
+        results = []
+        for _ in tqdm(range(n_games), desc="Evaluation Phase: "):
+            self._initialize_environment()
+            terminated = False
+            episode_return = 0
+
+            while not terminated:
+                observations, _ = self._fetch_environment_details()
+                actions, _ = self._get_agent_actions(observations, evaluate=True)
+                reward, terminated = self._execute_actions(actions)
+                episode_return += reward
+
+            results.append(episode_return)
+
+        return np.mean(results)

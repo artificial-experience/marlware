@@ -122,9 +122,11 @@ class DRQNAgent:
             self._target_hidden_state, self._target_cell_state = target_lstm_memory
         return target_q_values
 
-    def act(self, observation: np.ndarray, available_actions: np.ndarray):
+    def act(
+        self, observation: np.ndarray, available_actions: np.ndarray, evaluate: bool
+    ):
         """Produce epsilon-greedy action given observation"""
-        if np.random.random() > self._epsilon:
+        if evaluate or np.random.random() > self._epsilon:
             observation = torch.tensor(observation, dtype=torch.float).unsqueeze(0)
 
             q_values, lstm_memory = self._online_drqn_network(
