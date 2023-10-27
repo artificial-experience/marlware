@@ -5,6 +5,17 @@ from qmix.tune.construct import QMIXSharedParamsConstruct
 
 
 class TrainableConstruct:
+    """
+    Interface class between Construct and Registry
+    Args:
+        param: [construct_directive]: the construct configuration file to be used
+
+    Internal State:
+        param: [construct_configuration_file]: configuration for chosen construct
+        param: [registered_trainable_constructs]: all constructs that were registered (derived from BaseConstruct)
+        param: [target_trainable_construct]: class to be connceted to the configuration dict
+    """
+
     def __init__(self, construct_directive: dict):
         self._construct_directive = construct_directive
 
@@ -14,6 +25,7 @@ class TrainableConstruct:
 
     @classmethod
     def from_construct_directive(cls, construct_directive: dict):
+        """construct class from configuration"""
         instance = cls(construct_directive)
         instance._construct_configuration_file = methods.get_nested_dict_field(
             directive=construct_directive,
@@ -29,6 +41,7 @@ class TrainableConstruct:
         return instance
 
     def delegate(self):
+        """given registry delegate selected construct"""
         construct = None
         if self._target_trainable_construct in self._registered_trainable_constructs:
             construct = ConstructRegistry.create(

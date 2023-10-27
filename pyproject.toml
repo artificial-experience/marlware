@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "marl-revamped-qmix"
+name = "marl-ripped-qmix"
 version = "0.1.0"
 description = ""
 authors = ["Sithael <chojnacki.jamie@gmail.com>"]

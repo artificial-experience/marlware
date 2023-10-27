@@ -6,6 +6,33 @@ from qmix.networks import DRQN
 
 
 class DRQNAgent:
+    """
+    Deep recurrent q-network agent
+    Single agent instance that has a shared drqn network
+
+    Args:
+        param: [agent_unique_id]: agents unique identifier
+        param: [agent_configuration]: agent hyperparameter configuration
+        param: [num_actions]: number of actions available in the env
+        param: [target_drqn_network]: network object to be used in order to calculate target
+        param: [online_drqn_network]: network object to be used in order to produce actions
+        param: [num_agents]: number of agents in the interaction zone
+
+    Internal State:
+        param: [action_space]: list of all actions available in the env
+        param: [epsilon]: exploration hyperparameter
+        param: [epsilon_min]: minimum exploration value
+        param: [epsilon_dec]: decay param for each epsilon update
+        param: [hidden_state]: keeps track of hidden state weights for online net
+        param: [cell_state]: heeps track of cell state weights for online net
+        param: [prev_action]: heeps track of previous action
+        param: [hidden_state]: keeps track of hidden state weights for target net
+        param: [cell_state]: heeps track of cell state weights for target net
+
+    Internal State: []
+        param: []
+    """
+
     def __init__(
         self,
         agent_unique_id: int,
@@ -45,6 +72,7 @@ class DRQNAgent:
         )
 
     def _access_config_params(self):
+        """acces configuration parameters"""
         self._epsilon = methods.get_nested_dict_field(
             directive=self._agent_configuration,
             keys=["exploration", "epsilon", "choice"],

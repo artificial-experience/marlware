@@ -5,6 +5,23 @@ from qmix.common import methods
 
 
 class DRQN(nn.Module):
+    """
+    Deep recurrent Q-network implementation
+    Network's forward method operates on obesrvation and previous action
+    Network will return approximated q-values and updated cell state and hidden state
+
+    Args:
+        :param [config]: network configuration dictionary
+
+    Internal State:
+        :param [model_observation_size]: shape of observation array
+        :param [model_n_actions]: number of actions available to approximate q-values
+        :param [model_embedding_size]: shape of embedding array
+        :param [model_hidden_state_size]: shape of hidden state array
+        :param [model_n_q_values]: number of q-values to approximate (output from network)
+
+    """
+
     def __init__(self, config: dict):
         super().__init__()
         self._config = config
@@ -17,6 +34,7 @@ class DRQN(nn.Module):
         self._model_n_q_values = None
 
     def _access_config_params(self):
+        """extract values given config dict"""
         self._model_observation_size = methods.get_nested_dict_field(
             directive=self._config,
             keys=["model", "choice", "observation_size"],
@@ -40,14 +58,17 @@ class DRQN(nn.Module):
 
     @property
     def hidden_state_dim(self):
+        """getter methd for hidden state size"""
         return self._model_hidden_state_size
 
     def _init_weights(self, x):
+        """weight initializer method - xavier"""
         if type(x) == nn.Linear:
             nn.init.xavier_uniform_(x.weight)
             x.bias.data.fill_(0.01)
 
     def construct_network(self, num_agents: int):
+        """given number of agents the method will construct each agent and return itself"""
         self._access_config_params()
 
         # Initial MLP: (observation + last action one hot encoded) -> embedding
@@ -79,6 +100,7 @@ class DRQN(nn.Module):
         hidden_state: torch.Tensor,
         cell_state: torch.Tensor,
     ):
+        """network inference method"""
         # Ensure that the tensors are 3-dimensional (batch size can be 1)
         if len(observation.size()) < 3:
             observation = observation.unsqueeze(0)

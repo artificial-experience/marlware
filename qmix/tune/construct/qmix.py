@@ -13,6 +13,31 @@ from qmix.networks import MixingNetwork
 
 
 class QMIXSharedParamsConstruct(BaseConstruct):
+    """
+    Construct class that instantiates DRQN agents and networks
+
+    Args:
+        param: [construct_registry_directive]: directive consstructed by registry
+
+    Internal State:
+        param: [construct_configuration]: directive consstructed by registry
+        param: [n_agents]: number of agents to be instantiated
+        param: [environment]: env to be instantiated
+        param: [environment_info]: intrinsic informations about the env at hand
+        param: [replay_memory]: replay buffer instance
+        param: [shared_target_drqn_network]: shared amongst the agents network that is used for target calculation (frozen)
+        param: [shared_online_drqn_network]: shared amongst the agents network that is used for action selection and error calculation
+        param: [target_mixing_network]: mixing network that is used for target calculation (frozen)
+        param: [online_mixing_network]: mixing network that is used for calculation of error
+        param: [learning_rate]: hyperparameter for optimizer
+        param: [discount_factor]: hyperparameter for reward discounting
+        param: [target_network_update_schedule]: how often to update weights of target nets
+        param: [accelerator_device]: either CPU or GPU
+        param: [params]: local parameters for optimizer
+        param: [optimizer]: local optimizer such as Adam or RMSprop
+        param: [criterion]: objective function
+    """
+
     def __init__(self, construct_registry_directive: dict):
         self._construct_registry_directive = construct_registry_directive
         self._construct_configuration = None
@@ -31,8 +56,8 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         self._shared_target_drqn_network = None
         self._shared_online_drqn_network = None
 
-        self._online_mixing_network = None
         self._target_mixing_network = None
+        self._online_mixing_network = None
 
         # Intrinsic const parameters
         self._learning_rate = None
@@ -48,10 +73,10 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         # Construct optimizer and criterion
         self._optimizer = None
         self._criterion = None
-        self._optimizer_step = None
 
     @classmethod
     def from_construct_registry_directive(cls, construct_registry_directive: str):
+        """create construct given directve"""
         instance = cls(construct_registry_directive)
 
         # Get the path to the construct file
@@ -110,6 +135,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         return instance
 
     def _instantiate_optimizer_and_criterion(self):
+        """instantiate objective function and optimizer"""
         self._optimizer = torch.optim.RMSprop(
             params=self._params, lr=self._learning_rate
         )
@@ -121,6 +147,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         mixing_network_configuration: dict,
         num_agents: int,
     ):
+        """create mixer instance for both online and target settings"""
         self._online_mixing_network = MixingNetwork(
             mixing_network_configuration=mixing_network_configuration,
             hypernetwork_configuration=hypernetwork_configuration,
@@ -134,6 +161,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
     def _spawn_agents(
         self, drqn_configuration: dict, num_actions: int, num_agents: int
     ):
+        """create N agent instances"""
         # Create target and online networks
         self._shared_target_drqn_network = DRQN(
             config=drqn_configuration
@@ -155,6 +183,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         ]
 
     def _instantiate_env(self, environment_configuration: dict):
+        """create environment instance given the configuration dict"""
         environment_creator = SC2Environment(config=environment_configuration)
         (
             self._environment,
@@ -162,6 +191,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         ) = environment_creator.create_env_instance()
 
     def _instantiate_replay_memory(self, memory_configuration: dict):
+        """create generic replay memory"""
         max_size = methods.get_nested_dict_field(
             directive=memory_configuration,
             keys=["max_size", "choice"],
@@ -212,6 +242,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         )
 
     def _check_construct(self):
+        """check whether construct exists"""
         assert self._agents is not None, "Agents are not spawned"
         assert (
             self._online_mixing_network is not None
@@ -237,6 +268,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             )
 
     def commit(self):
+        """commit updates and check construct"""
         drqn_configuration = methods.get_nested_dict_field(
             directive=self._construct_configuration,
             keys=["architecture-directive", "drqn_configuration"],
@@ -295,6 +327,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         return self
 
     def _update_construct_parameters(self):
+        """helper method for updaing construct local parameters"""
         parameters = []
 
         parameters += list(self._shared_target_drqn_network.parameters())
@@ -305,6 +338,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         self._params = parameters
 
     def close_env(self):
+        """self explanatory method"""
         self._environment.close()
 
     # ==================================
@@ -312,14 +346,17 @@ class QMIXSharedParamsConstruct(BaseConstruct):
     # ==================================
 
     def _initialize_environment(self):
+        """reset environment to start settings"""
         self._environment.reset()
 
     def _fetch_environment_details(self):
+        """get observation and state from environment"""
         observations = self._environment.get_obs()
         states = self._environment.get_state()
         return observations, states
 
     def _get_agent_actions(self, observations, evaluate=False):
+        """return agent actions along with available actions"""
         actions = []
         avail_actions = []
         num_agents = len(self._agents)
@@ -344,12 +381,14 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         return actions, avail_actions
 
     def _prepare_agent_observation(self, observation, agent):
+        """concatenate agent one hot encoded information with observation"""
         agent_one_hot = agent.access_agent_one_hot_id()
         agent_observation = torch.tensor(observation, dtype=torch.float32)
         agent_observation = torch.cat([agent_observation, agent_one_hot], axis=0)
         return agent_observation
 
     def _execute_actions(self, actions):
+        """step the environment given action from all N agents"""
         reward, terminated, _ = self._environment.step(actions)
         return reward, terminated
 
@@ -365,6 +404,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         next_states,
         avail_actions,
     ):
+        """store transition for each agent in generic buffer"""
         if prev_actions is not None:
             data = [
                 observations,
@@ -380,9 +420,11 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             self._memory.store_transition(data)
 
     def memory_ready(self):
+        """self explanatory method"""
         return self._memory.ready()
 
     def collect_rollouts(self):
+        """method to spin environment and collect rollouts / trajectories in order to learn"""
         self._initialize_environment()
         terminated = False
         prev_actions = None
@@ -415,6 +457,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
     # ==================================
 
     def _convert_to_tensors(self, sample_data):
+        """convert sample trajectory batch from numpy array to tensor"""
         (
             observations,
             actions,
@@ -444,6 +487,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         return tensors
 
     def _get_multi_agent_q_values(self, tensors):
+        """for each agent collect approximated q-values"""
         multi_agent_q_vals = []
         multi_agent_target_q_vals = []
         for agent_id, agent in enumerate(self._agents):
@@ -455,6 +499,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         return multi_agent_q_vals, multi_agent_target_q_vals
 
     def _get_agent_q_values(self, agent_id, agent, tensors):
+        """helper method for calculating q-values per each agent"""
         # Implement the logic to get the agent's Q values and target Q values
         agent.reset_intrinsic_lstm_params()
         agent_one_hot = agent.access_agent_one_hot_id().repeat(1, 32, 1)
@@ -490,6 +535,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         return q_vals, target_q_vals
 
     def _calculate_loss(self, tensors, multi_agent_q_vals, multi_agent_target_q_vals):
+        """given target and objective calculate loss w.r.t. criterion"""
         t_multi_agent_q_vals = torch.stack(multi_agent_q_vals, dim=0).transpose(0, 1)
         t_multi_agent_target_q_vals = torch.stack(
             multi_agent_target_q_vals, dim=0
@@ -521,18 +567,21 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         return loss
 
     def _backpropagate(self, loss):
+        """backprop through network parameters"""
         self._optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self._params, 10.0)
         self._optimizer.step()
 
     def update_target_networks(self, n_rollout, n_rollouts_per_target_swap):
+        """given schedule update target frozen weights of online network weights"""
         if n_rollout % n_rollouts_per_target_swap == 0:
             for agent in self._agents:
                 agent.update_target_network_params()
             self.update_target_network_params()
 
     def optimize(self, n_rollout: int):
+        """opimize network - main learn method"""
         sample_data = self._memory.sample_buffer()
         tensors = self._convert_to_tensors(sample_data)
         multi_agent_q_vals, multi_agent_target_q_vals = self._get_multi_agent_q_values(
@@ -549,6 +598,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
     # ==================================
 
     def evaluate(self, n_games: int):
+        """evaluate current model on n_games"""
         results = []
         for _ in tqdm(range(n_games), desc="Evaluation Phase: "):
             self._initialize_environment()
