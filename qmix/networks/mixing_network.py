@@ -10,6 +10,20 @@ class MixingNetwork(nn.Module):
     def __init__(
         self, mixing_network_configuration: dict, hypernetwork_configuration: dict
     ):
+        """
+        Mixer network that thakes q-values for each agent and compresses them
+        into a single cummulative q-tot value
+
+        Args:
+            :param [mixing_network_configuration]: configuration dictionary for mixier
+            :param [hypernetwork_configuration]: configuration dictionary for weights and biases hypernets
+
+        Internal State:
+            :param [model_n_q_values]: shape of n_q_values tensor
+            :param [model_hidden_layer_size]: hidden layer hyperparameter size for mixer
+            :param [biases_hypernetowrk]: entity of biases hypernetowrk class
+            :param [weights_hypernetwork]: entity of weights hypernetowrk class
+        """
         super().__init__()
         self._mixing_network_configuration = mixing_network_configuration
         self._hypernetwork_configuration = hypernetwork_configuration
@@ -21,6 +35,7 @@ class MixingNetwork(nn.Module):
         self._weights_hypernetwork = None
 
     def _access_config_params(self):
+        """extract values given config dict"""
         # Model configuration
         self._model_n_q_values = methods.get_nested_dict_field(
             directive=self._mixing_network_configuration,
@@ -39,6 +54,7 @@ class MixingNetwork(nn.Module):
         host_network_biases_hidden_size,
         host_network_biases_output_size,
     ):
+        """create hypernetwork for biases and weights"""
         bias_hypernet_config = hypernetwork_configuration.get("bias_updates", None)
         weigh_hypernet_config = hypernetwork_configuration.get("weight_updates", None)
 
@@ -56,6 +72,7 @@ class MixingNetwork(nn.Module):
         )
 
     def _init_weights(self, x):
+        """weight initializer method - xavier"""
         if type(x) == nn.Linear:
             nn.init.xavier_uniform_(x.weight)
             x.bias.data.fill_(0.01)
@@ -67,6 +84,7 @@ class MixingNetwork(nn.Module):
         hidden_layer_biases,
         output_layer_biases,
     ):
+        """insert weights and biases from hypernetwork into mixer"""
         hidden_weights = hidden_layer_weights.view_as(self.hidden_layer.weight)
         output_weights = output_layer_weights.view_as(self.output_layer.weight)
         hidden_biases = hidden_layer_biases.view_as(self.hidden_layer.bias)
@@ -79,6 +97,7 @@ class MixingNetwork(nn.Module):
             self.output_layer.bias.copy_(output_biases)
 
     def construct_network(self, num_agents: int):
+        """construct hypernetworks and mixer networks"""
         self._access_config_params()
 
         self.hidden_layer = nn.Linear(num_agents, self._model_hidden_layer_size)
@@ -104,7 +123,7 @@ class MixingNetwork(nn.Module):
         return self
 
     def forward(self, q_values: torch.Tensor, state_representation: torch.Tensor):
-        # hypernetwork feed forward
+        """given q-values from all agents calculate the q-tot"""
         (
             hypernetwork_hidden_weights,
             hypernetwork_output_weights,

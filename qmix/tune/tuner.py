@@ -38,6 +38,7 @@ class Tuner:
         return instance
 
     def _set_rollout_n_eval_params(self):
+        """set number of rollouts per evaluation"""
         n_rollouts = methods.get_nested_dict_field(
             directive=self.tuner_directive,
             keys=["rollout_configuration", "n_rollouts", "choice"],

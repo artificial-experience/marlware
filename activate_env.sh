@@ -7,3 +7,6 @@ poetry install
 source $(poetry env info --path)/bin/activate
 pre-commit install
 echo "QMIX Activated"
+
+echo "Running Tests..."
+pytest ./tests -W ignore::DeprecationWarning
