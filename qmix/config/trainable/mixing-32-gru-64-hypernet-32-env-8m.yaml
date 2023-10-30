@@ -10,6 +10,9 @@ architecture-directive:
       target_network_update_schedule:
         type: int
         choice: 200
+      grad_clip:
+        type: float
+        choice: 10.0
   drqn_configuration:
     model:
       type: dict

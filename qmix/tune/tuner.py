@@ -58,7 +58,10 @@ class Tuner:
         mean_results = []
         for n_rollout in tqdm(range(self._n_rollouts), desc="Training Phase: "):
             self._trainable_construct.update_target_networks(
-                n_rollout, n_rollouts_per_target_swap=200
+                n_rollout, n_rollouts_per_target_swap=100
+            )
+            self._trainable_construct.decrease_exploration_rate(
+                n_rollout, n_rollouts_per_epsilon_decrease=10
             )
 
             if n_rollout % self._eval_schedule == 0:

@@ -67,7 +67,8 @@ def get_nested_dict_field(
     )
 
 
-def plot_learning_curve(x, scores, figure_file="progress.png"):
+def plot_learning_curve(x, scores, timestamp):
+    figure_file = f"network-progress-{timestamp}"
     running_avg = np.zeros(len(scores))
     for i in range(len(running_avg)):
         running_avg[i] = np.mean(scores[max(0, i - 100) : (i + 1)])

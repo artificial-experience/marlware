@@ -1,5 +1,3 @@
-import pytest
-
 from qmix.environment import SC2Environment
 
 

@@ -61,7 +61,8 @@ class Tune:
         if results:
             self._results = results
             num_plot_args = [x for x in range(n_data_points)]
-            methods.plot_learning_curve(num_plot_args, self._results)
+            timestamp = methods.get_current_timestamp()
+            methods.plot_learning_curve(num_plot_args, self._results, timestamp)
         else:
             pass
 
