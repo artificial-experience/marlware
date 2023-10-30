@@ -88,7 +88,6 @@ class DRQNAgent:
 
     def reset_intrinsic_lstm_params(self):
         """Reset the agent's memory (LSTM states and previous action)"""
-        self._access_config_params()
         self._hidden_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
         self._cell_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
 
@@ -116,7 +115,8 @@ class DRQNAgent:
 
     def decrease_exploration(self):
         """Decrease exploration parameters"""
-        self._epsilon = max(self._epsilon_min, self._epsilon * self._epsilon_dec)
+        decreased_epsilon = self._epsilon * self._epsilon_dec
+        self._epsilon = max(self._epsilon_min, decreased_epsilon)
 
     def access_agent_one_hot_id(self):
         """Access one hot id for the agent - that is added to the observation"""

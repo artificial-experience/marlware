@@ -61,12 +61,6 @@ class DRQN(nn.Module):
         """getter methd for hidden state size"""
         return self._model_hidden_state_size
 
-    def _init_weights(self, x):
-        """weight initializer method - xavier"""
-        if type(x) == nn.Linear:
-            nn.init.xavier_uniform_(x.weight)
-            x.bias.data.fill_(0.01)
-
     def construct_network(self, num_agents: int):
         """given number of agents the method will construct each agent and return itself"""
         self._access_config_params()
@@ -87,9 +81,6 @@ class DRQN(nn.Module):
         self.mlp2 = nn.Sequential(
             nn.Linear(self._model_hidden_state_size, self._model_n_q_values)
         )
-
-        # Apply Xavier initialisation by recursive search
-        self.apply(self._init_weights)
 
         return self
 

@@ -1,5 +1,3 @@
-import copy
-
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -65,7 +63,6 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         self._learning_rate = None
         self._discount_factor = None
         self._target_network_update_schedule = None
-        self._grad_clip = None
 
         # Default device set to cpu
         self._accelerator_device = "cpu"
@@ -135,16 +132,6 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 "choice",
             ],
         )
-        instance._grad_clip = methods.get_nested_dict_field(
-            directive=configuration,
-            keys=[
-                "architecture-directive",
-                "construct_configuration",
-                "training",
-                "grad_clip",
-                "choice",
-            ],
-        )
         return instance
 
     def _instantiate_optimizer_and_criterion(self):
@@ -166,7 +153,10 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             hypernetwork_configuration=hypernetwork_configuration,
         ).construct_network(num_agents=num_agents)
 
-        self._target_mixing_network = copy.deepcopy(self._online_mixing_network)
+        self._target_mixing_network = MixingNetwork(
+            mixing_network_configuration=mixing_network_configuration,
+            hypernetwork_configuration=hypernetwork_configuration,
+        ).construct_network(num_agents=num_agents)
 
     def _spawn_agents(
         self, drqn_configuration: dict, num_actions: int, num_agents: int
@@ -386,6 +376,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 agent_action = np.random.choice(available_actions_index)
 
             actions.append(agent_action)
+            agent.decrease_exploration()
 
         return actions, avail_actions
 
@@ -556,7 +547,6 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         )
 
         q_tot = self._online_mixing_network(online_mixing_q_vals, tensors["states"])
-        q_tot = q_tot.squeeze(1)
 
         max_actions = t_multi_agent_target_q_vals.argmax(dim=-1).unsqueeze(-1)
         target_mixing_q_vals = t_multi_agent_target_q_vals.gather(
@@ -565,7 +555,6 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         target_q_tot = self._target_mixing_network(
             target_mixing_q_vals, tensors["next_states"]
         )
-        target_q_tot = target_q_tot.squeeze(1)
 
         t_rewards_transposed = tensors["rewards"].transpose(0, 1)
         t_dones_transposed = tensors["dones"].transpose(0, 1)
@@ -575,14 +564,13 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         y_hat = y_hat.detach()
 
         loss = self._criterion(q_tot, y_hat)
-        print("---- loss: ", loss)
         return loss
 
     def _backpropagate(self, loss):
         """backprop through network parameters"""
         self._optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self._params, self._grad_clip)
+        torch.nn.utils.clip_grad_norm_(self._params, 10.0)
         self._optimizer.step()
 
     def update_target_networks(self, n_rollout, n_rollouts_per_target_swap):
@@ -591,13 +579,6 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             for agent in self._agents:
                 agent.update_target_network_params()
             self.update_target_network_params()
-
-    def decrease_exploration_rate(self, n_rollout, n_rollouts_per_epsilon_decrease):
-        """decrease exploration epsilon param in each agent after n_rollouts_per_epsilon_decrease passed"""
-        if n_rollout % n_rollouts_per_epsilon_decrease == 0:
-            for agent in self._agents:
-                agent.decrease_exploration()
-                print("---- current epsilon ", agent._epsilon)
 
     def optimize(self, n_rollout: int):
         """opimize network - main learn method"""
@@ -632,7 +613,4 @@ class QMIXSharedParamsConstruct(BaseConstruct):
 
             results.append(episode_return)
 
-        mean_score = np.mean(results)
-        print("---- mean score: ", mean_score)
-
-        return mean_score
+        return np.mean(results)
