@@ -58,14 +58,14 @@ class Tuner:
         mean_results = []
         for n_rollout in tqdm(range(self._n_rollouts), desc="Training Phase: "):
             self._trainable_construct.update_target_networks(
-                n_rollout, n_rollouts_per_target_swap=100
+                n_rollout, n_rollouts_per_target_swap=200
             )
             self._trainable_construct.decrease_exploration_rate(
-                n_rollout, n_rollouts_per_epsilon_decrease=10
+                n_rollout, n_rollouts_per_epsilon_decrease=50
             )
 
             if n_rollout % self._eval_schedule == 0:
-                mean_result = self._trainable_construct.evaluate(n_games=20)
+                mean_result = self._trainable_construct.evaluate(n_games=10)
                 mean_results.append(mean_result)
 
             if self._trainable_construct.memory_ready():
