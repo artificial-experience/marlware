@@ -1,4 +1,4 @@
-# Marl-Revamped-QMIX
+# Marl-Ripped-QMIX
 
 Welcome to Marl-Revamped-QMIX, a project which is not just about implementation of the Monotonic Value Function Factorisation (QMIX) algorithm, but also about my personal journey through the fascinating world of Deep Multi-Agent Reinforcement Learning (MARL). As a testament to my learning process, this repository reflects a growing understanding of complex multi-agent systems and deep learning models.
 
