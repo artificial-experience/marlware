@@ -29,8 +29,6 @@ class DRQNAgent:
         param: [hidden_state]: keeps track of hidden state weights for target net
         param: [cell_state]: heeps track of cell state weights for target net
 
-    Internal State: []
-        param: []
     """
 
     def __init__(
@@ -41,8 +39,8 @@ class DRQNAgent:
         target_drqn_network: DRQN,
         online_drqn_network: DRQN,
         num_agents: int,
+        device: str,
     ):
-        self._agent_unique_id = torch.tensor(agent_unique_id)
         self._num_agents = num_agents
         self._agent_configuration = agent_configuration
 
@@ -54,21 +52,34 @@ class DRQNAgent:
         self._num_actions = num_actions
         self._action_space = [action for action in range(self._num_actions)]
 
+        self._acceleration_device = device
+
+        # Agent unique identifier
+        self._agent_unique_id = torch.tensor(
+            agent_unique_id, device=self._acceleration_device
+        )
+
         # Epsilon params
         self._epsilon = 1.0
         self._epsilon_min = 0.05
         self._epsilon_dec = 0.99
 
         # Intrinsic non-const parameters
-        self._hidden_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
-        self._cell_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
-        self._prev_action = torch.zeros(1, len(self._action_space))
+        self._hidden_state = torch.zeros(
+            self._online_drqn_network.hidden_state_dim, device=self._acceleration_device
+        )
+        self._cell_state = torch.zeros(
+            self._online_drqn_network.hidden_state_dim, device=self._acceleration_device
+        )
+        self._prev_action = torch.zeros(
+            1, len(self._action_space), device=self._acceleration_device
+        )
 
         self._target_hidden_state = torch.zeros(
-            self._online_drqn_network.hidden_state_dim
+            self._online_drqn_network.hidden_state_dim, device=self._acceleration_device
         )
         self._target_cell_state = torch.zeros(
-            self._online_drqn_network.hidden_state_dim
+            self._online_drqn_network.hidden_state_dim, device=self._acceleration_device
         )
 
     def _access_config_params(self):
@@ -88,14 +99,18 @@ class DRQNAgent:
 
     def reset_intrinsic_lstm_params(self):
         """Reset the agent's memory (LSTM states and previous action)"""
-        self._hidden_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
-        self._cell_state = torch.zeros(self._online_drqn_network.hidden_state_dim)
+        self._hidden_state = torch.zeros(
+            self._online_drqn_network.hidden_state_dim, device=self._acceleration_device
+        )
+        self._cell_state = torch.zeros(
+            self._online_drqn_network.hidden_state_dim, device=self._acceleration_device
+        )
 
         self._target_hidden_state = torch.zeros(
-            self._target_drqn_network.hidden_state_dim
+            self._target_drqn_network.hidden_state_dim, device=self._acceleration_device
         )
         self._target_cell_state = torch.zeros(
-            self._target_drqn_network.hidden_state_dim
+            self._target_drqn_network.hidden_state_dim, device=self._acceleration_device
         )
 
     def update_target_network_params(self, tau=1.0):
@@ -121,7 +136,8 @@ class DRQNAgent:
     def access_agent_one_hot_id(self):
         """Access one hot id for the agent - that is added to the observation"""
         agent_one_hot_id = torch.nn.functional.one_hot(
-            self._agent_unique_id, num_classes=self._num_agents
+            torch.tensor(self._agent_unique_id, device=self._acceleration_device),
+            num_classes=self._num_agents,
         )
         return agent_one_hot_id
 
@@ -140,14 +156,15 @@ class DRQNAgent:
         self, target_observation: torch.Tensor, prev_action: torch.Tensor
     ):
         """Estiamte target action value functions"""
-        with torch.no_grad():
-            target_q_values, target_lstm_memory = self._target_drqn_network(
-                observation=target_observation,
-                prev_action=prev_action,
-                hidden_state=self._target_hidden_state,
-                cell_state=self._target_cell_state,
-            )
-            self._target_hidden_state, self._target_cell_state = target_lstm_memory
+        target_observation.to(self._acceleration_device)
+
+        target_q_values, target_lstm_memory = self._target_drqn_network(
+            observation=target_observation,
+            prev_action=prev_action,
+            hidden_state=self._target_hidden_state,
+            cell_state=self._target_cell_state,
+        )
+        self._target_hidden_state, self._target_cell_state = target_lstm_memory
         return target_q_values
 
     def act(
@@ -155,7 +172,9 @@ class DRQNAgent:
     ):
         """Produce epsilon-greedy action given observation"""
         if evaluate or np.random.random() > self._epsilon:
-            observation = torch.tensor(observation, dtype=torch.float).unsqueeze(0)
+            observation = torch.tensor(
+                observation, dtype=torch.float, device=self._acceleration_device
+            ).unsqueeze(0)
 
             q_values, lstm_memory = self._online_drqn_network(
                 observation,
@@ -173,7 +192,8 @@ class DRQNAgent:
 
             self._hidden_state, self._cell_state = lstm_memory
             self._prev_action = torch.nn.functional.one_hot(
-                torch.tensor([action]), num_classes=len(self._action_space)
+                torch.tensor([action], device=self._acceleration_device),
+                num_classes=len(self._action_space),
             )
 
         else:

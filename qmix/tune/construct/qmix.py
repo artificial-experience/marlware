@@ -67,8 +67,8 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         self._target_network_update_schedule = None
         self._grad_clip = None
 
-        # Default device set to cpu
-        self._accelerator_device = "cpu"
+        # Default device set to None
+        self._accelerator_device = None
 
         # Parameters
         self._params = None
@@ -96,7 +96,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         instance._construct_configuration = configuration
 
         # Extract the accelerator device and number of agents from the configuration
-        instance._accelerator_device = methods.get_nested_dict_field(
+        accelerator_type = methods.get_nested_dict_field(
             directive=configuration,
             keys=[
                 "architecture-directive",
@@ -105,6 +105,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 "choice",
             ],
         )
+        instance._accelerator_device = torch.device(accelerator_type)
         instance._learning_rate = methods.get_nested_dict_field(
             directive=configuration,
             keys=[
@@ -168,6 +169,9 @@ class QMIXSharedParamsConstruct(BaseConstruct):
 
         self._target_mixing_network = copy.deepcopy(self._online_mixing_network)
 
+        self._target_mixing_network.to(self._accelerator_device)
+        self._online_mixing_network.to(self._accelerator_device)
+
     def _spawn_agents(
         self, drqn_configuration: dict, num_actions: int, num_agents: int
     ):
@@ -180,6 +184,9 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             config=drqn_configuration
         ).construct_network(num_agents=num_agents)
 
+        self._shared_target_drqn_network.to(self._accelerator_device)
+        self._shared_online_drqn_network.to(self._accelerator_device)
+
         self._agents = [
             DRQNAgent(
                 agent_unique_id=identifier,
@@ -188,6 +195,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 target_drqn_network=self._shared_target_drqn_network,
                 online_drqn_network=self._shared_online_drqn_network,
                 num_agents=num_agents,
+                device=self._accelerator_device,
             )
             for identifier in range(num_agents)
         ]
@@ -392,7 +400,9 @@ class QMIXSharedParamsConstruct(BaseConstruct):
     def _prepare_agent_observation(self, observation, agent):
         """concatenate agent one hot encoded information with observation"""
         agent_one_hot = agent.access_agent_one_hot_id()
-        agent_observation = torch.tensor(observation, dtype=torch.float32)
+        agent_observation = torch.tensor(
+            observation, dtype=torch.float32, device=self._accelerator_device
+        )
         agent_observation = torch.cat([agent_observation, agent_one_hot], axis=0)
         return agent_observation
 
@@ -478,20 +488,37 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             next_states,
             avail_actions,
         ) = sample_data
-        device = self._accelerator_device
-        dtype = torch.float32
+
         tensors = {
-            "observations": torch.tensor([observations], dtype=dtype).to(device),
-            "actions": torch.tensor([actions], dtype=torch.int64).to(device),
-            "rewards": torch.tensor([rewards], dtype=dtype).to(device),
-            "next_observations": torch.tensor([next_observations], dtype=dtype).to(
-                device
+            "observations": torch.tensor(
+                [observations], dtype=torch.float32, device=self._accelerator_device
             ),
-            "dones": torch.tensor([dones], dtype=dtype).to(device),
-            "prev_actions": torch.tensor([prev_actions], dtype=torch.int64).to(device),
-            "states": torch.tensor([states], dtype=dtype).to(device),
-            "next_states": torch.tensor([next_states], dtype=dtype).to(device),
-            "avail_actions": torch.tensor([avail_actions], dtype=dtype).to(device),
+            "actions": torch.tensor(
+                [actions], dtype=torch.int64, device=self._accelerator_device
+            ),
+            "rewards": torch.tensor(
+                [rewards], dtype=torch.float32, device=self._accelerator_device
+            ),
+            "next_observations": torch.tensor(
+                [next_observations],
+                dtype=torch.float32,
+                device=self._accelerator_device,
+            ),
+            "dones": torch.tensor(
+                [dones], dtype=torch.float32, device=self._accelerator_device
+            ),
+            "prev_actions": torch.tensor(
+                [prev_actions], dtype=torch.int64, device=self._accelerator_device
+            ),
+            "states": torch.tensor(
+                [states], dtype=torch.float32, device=self._accelerator_device
+            ),
+            "next_states": torch.tensor(
+                [next_states], dtype=torch.float32, device=self._accelerator_device
+            ),
+            "avail_actions": torch.tensor(
+                [avail_actions], dtype=torch.float32, device=self._accelerator_device
+            ),
         }
         return tensors
 
@@ -575,7 +602,6 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         y_hat = y_hat.detach()
 
         loss = self._criterion(q_tot, y_hat)
-        print("---- loss: ", loss)
         return loss
 
     def _backpropagate(self, loss):
@@ -597,7 +623,6 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         if n_rollout % n_rollouts_per_epsilon_decrease == 0:
             for agent in self._agents:
                 agent.decrease_exploration()
-                print("---- current epsilon ", agent._epsilon)
 
     def optimize(self, n_rollout: int):
         """opimize network - main learn method"""
@@ -633,6 +658,4 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             results.append(episode_return)
 
         mean_score = np.mean(results)
-        print("---- mean score: ", mean_score)
-
         return mean_score
