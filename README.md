@@ -10,14 +10,6 @@ My way of doing things? I dig deep. I mean, really deep. I've found myself readi
 
 As I keep learning and growing, I have plans to beef up Marl-Revamped-QMIX. I'm looking to integrate it with cool technologies like Nvidia Isaac Gym and AWS Cloud services. This should make it a pretty handy tool for anyone interested in MARL.
 
-## Development Process
-
-When it comes to the development process, organization is key. That's why you'll find all the stable code on the `main` branch. This is the go-to place if you're looking for tried and tested pieces of the project to learn from or to use as a basis for your own work.
-
-The real action happens on the `dev` branch. This is where I'm constantly working on new ideas, tweaking existing ones, and generally pushing the boundaries of what Marl-Revamped-QMIX can do. Keep in mind, things on the `dev` branch are always a work-in-progress, so you might encounter a few rough edges.
-
-In essence, `main` is for stability and `dev` is for innovation. Feel free to explore both branches and contribute as you see fit. Remember, every bit of feedback or suggestion helps make the project better!
-
 ## What Is QMIX?
 
 QMIX is a renowned value-based method in the sphere of MARL, acclaimed for its superior performance in a range of cooperative multi-agent reinforcement learning scenarios. It cleverly combines a centralized critic with decentralized actors, allowing for effective, tractable solutions to multi-agent tasks.
@@ -30,20 +22,6 @@ The magic of QMIX lies in its unique value decomposition technique: it decompose
 
 - **Modular design**: I have designed the project with modularity in mind. This offers high customizability to users who wish to experiment with individual components.
 
-- **Efficiency**: Performance optimization has been a primary focus in this reimplementation, resulting in a version of QMIX that runs faster and consumes less memory than many other versions.
-
-- **Documentation**: The codebase includes comprehensive comments, and the accompanying documentation is detailed, making it an excellent learning resource for those eager to delve into the workings of the QMIX algorithm.
-
-- **Community Support**: I am fostering an active community of users and developers. Feel free to post issues, suggest improvements, or ask for assistance in understanding the algorithm or the implementation.
-
 ## Application Domains
 
 QMIX is particularly useful for cooperative tasks requiring multiple agents to work collectively towards a common goal. The applications are varied and include collaborative games, robot teams, and autonomous driving among others.
-
-## Getting Started
-
-Starting with Marl-Revamped-QMIX is simple. A detailed setup guide and various examples are provided, so you can kick start your own multi-agent experiments quickly.
-
-## Final Note
-
-Marl-Revamped-QMIX is not just a tool; it's a learning resource. Whether you are an experienced researcher, a student, or an AI enthusiast, this project aims to support you in your exploration of multi-agent reinforcement learning. Community contributions are always welcome, as they help to enhance this resource for everyone. Let's learn together, and happy exploring!
