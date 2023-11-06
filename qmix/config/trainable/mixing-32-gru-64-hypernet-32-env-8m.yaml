@@ -24,34 +24,25 @@ architecture-directive:
         "n_q_values": 14,
         }
     exploration:
-      epsilon:
+      epsilon_start:
         type: float
         choice: 1.0
       epsilon_min:
         type: float
         choice: 0.05
-      epsilon_dec:
+      epsilon_anneal_time:
         type: flaot
-        choice: 0.99
+        choice: 500_000
   hypernetwork_configuration:
-    bias_updates:
-      model:
-        type: dict
-        choice: {
-          "state_representation_size": 168,
-          "hidden_layer_size": 32,
-          }
-    weight_updates:
-      model:
-        type: dict
-        choice: {
-          "state_representation_size": 168,
-          "hidden_layer_size": 32,
-          }
-  mixing_network_configuration:
+    model:
+      type: dict
+      choice: {
+        "state_representation_size": 168,
+        "hidden_layer_size": 64,
+        }
+  mixing_head_configuration:
     model:
       choice: {
-        "n_q_values": 14,
         "hidden_layer_size": 32,
         }
   device_configuration:

@@ -77,6 +77,8 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         self._optimizer = None
         self._criterion = None
 
+        self._timesteps = 0
+
     @classmethod
     def from_construct_registry_directive(cls, construct_registry_directive: str):
         """create construct given directve"""
@@ -180,9 +182,9 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         self._shared_target_drqn_network = DRQN(
             config=drqn_configuration
         ).construct_network(num_agents=num_agents)
-        self._shared_online_drqn_network = DRQN(
-            config=drqn_configuration
-        ).construct_network(num_agents=num_agents)
+        self._shared_online_drqn_network = copy.deepcopy(
+            self._shared_target_drqn_network
+        )
 
         self._shared_target_drqn_network.to(self._accelerator_device)
         self._shared_online_drqn_network.to(self._accelerator_device)
@@ -199,6 +201,9 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             )
             for identifier in range(num_agents)
         ]
+
+        for agent in self._agents:
+            agent.set_action_selector()
 
     def _instantiate_env(self, environment_configuration: dict):
         """create environment instance given the configuration dict"""
@@ -297,7 +302,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         )
         mixing_network_configuration = methods.get_nested_dict_field(
             directive=self._construct_configuration,
-            keys=["architecture-directive", "mixing_network_configuration"],
+            keys=["architecture-directive", "mixing_head_configuration"],
         )
         memory_configuration = methods.get_nested_dict_field(
             directive=self._construct_configuration,
@@ -366,6 +371,8 @@ class QMIXSharedParamsConstruct(BaseConstruct):
     def _initialize_environment(self):
         """reset environment to start settings"""
         self._environment.reset()
+        for agent in self._agents:
+            agent.reset_prev_action()
 
     def _fetch_environment_details(self):
         """get observation and state from environment"""
@@ -373,7 +380,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         states = self._environment.get_state()
         return observations, states
 
-    def _get_agent_actions(self, observations, evaluate=False):
+    def _get_agent_actions(self, observations, timesteps, evaluate=False):
         """return agent actions along with available actions"""
         actions = []
         avail_actions = []
@@ -388,10 +395,14 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             agent_observation = self._prepare_agent_observation(
                 observations[agent_id], agent
             )
-            agent_action = agent.act(agent_observation, available_actions, evaluate)
+            agent_action = agent.act(
+                agent_observation, available_actions, timesteps, evaluate
+            )
 
             if agent_action not in available_actions_index:
-                agent_action = np.random.choice(available_actions_index)
+                raise SystemError(
+                    "Agent chose the unavailable action in the environment"
+                )
 
             actions.append(agent_action)
 
@@ -403,7 +414,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         agent_observation = torch.tensor(
             observation, dtype=torch.float32, device=self._accelerator_device
         )
-        agent_observation = torch.cat([agent_observation, agent_one_hot], axis=0)
+        agent_observation = torch.cat([agent_observation, agent_one_hot], dim=0)
         return agent_observation
 
     def _execute_actions(self, actions):
@@ -452,7 +463,9 @@ class QMIXSharedParamsConstruct(BaseConstruct):
 
         while not terminated:
             observations, states = self._fetch_environment_details()
-            actions, avail_actions = self._get_agent_actions(observations)
+            actions, avail_actions = self._get_agent_actions(
+                observations, self._timesteps, evaluate=False
+            )
 
             reward, terminated = self._execute_actions(actions)
 
@@ -470,6 +483,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
                 avail_actions,
             )
             prev_actions = actions
+            self._timesteps += 1
 
     # ==================================
     # Section 2: Optimization
@@ -543,9 +557,9 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         t_agent_observations = tensors["observations"][:, :, agent_id, :]
         t_agent_next_observations = tensors["next_observations"][:, :, agent_id, :]
 
-        t_agent_observations = torch.cat([t_agent_observations, agent_one_hot], axis=2)
+        t_agent_observations = torch.cat([t_agent_observations, agent_one_hot], dim=2)
         t_agent_next_observations = torch.cat(
-            [t_agent_next_observations, agent_one_hot], axis=2
+            [t_agent_next_observations, agent_one_hot], dim=2
         )
 
         t_agent_prev_actions = tensors["prev_actions"][:, :, agent_id].unsqueeze(2)
@@ -566,7 +580,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
         )
 
         agent_avail_actions = tensors["avail_actions"][:, :, agent_id, :].squeeze(0)
-        target_q_vals[agent_avail_actions == 0] = -9999999.0
+        target_q_vals[agent_avail_actions == 0] = -9e7
 
         return q_vals, target_q_vals
 
@@ -624,7 +638,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
             for agent in self._agents:
                 agent.decrease_exploration()
 
-    def optimize(self, n_rollout: int):
+    def optimize(self):
         """opimize network - main learn method"""
         sample_data = self._memory.sample_buffer()
         tensors = self._convert_to_tensors(sample_data)
@@ -651,11 +665,14 @@ class QMIXSharedParamsConstruct(BaseConstruct):
 
             while not terminated:
                 observations, _ = self._fetch_environment_details()
-                actions, _ = self._get_agent_actions(observations, evaluate=True)
+                actions, _ = self._get_agent_actions(
+                    observations, self._timesteps, evaluate=True
+                )
                 reward, terminated = self._execute_actions(actions)
                 episode_return += reward
 
             results.append(episode_return)
 
         mean_score = np.mean(results)
+        print("EVAL MEAN SCORE: ", mean_score)
         return mean_score

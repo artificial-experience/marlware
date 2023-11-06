@@ -3,6 +3,7 @@ import torch
 
 from qmix.common import methods
 from qmix.networks import DRQN
+from qmix.selector import EpsilonGreedyActionSelector
 
 
 class DRQNAgent:
@@ -60,9 +61,12 @@ class DRQNAgent:
         )
 
         # Epsilon params
-        self._epsilon = 1.0
-        self._epsilon_min = 0.05
-        self._epsilon_dec = 0.99
+        self._epsilon_start = None
+        self._epsilon_min = None
+        self._epsilon_anneal_time = None
+
+        # Action selector
+        self._action_selector = None
 
         # Intrinsic non-const parameters
         self._hidden_state = torch.zeros(
@@ -84,17 +88,25 @@ class DRQNAgent:
 
     def _access_config_params(self):
         """acces configuration parameters"""
-        self._epsilon = methods.get_nested_dict_field(
+        self._epsilon_start = methods.get_nested_dict_field(
             directive=self._agent_configuration,
-            keys=["exploration", "epsilon", "choice"],
+            keys=["exploration", "epsilon_start", "choice"],
         )
         self._epsilon_min = methods.get_nested_dict_field(
             directive=self._agent_configuration,
             keys=["exploration", "epsilon_min", "choice"],
         )
-        self._epsilon_dec = methods.get_nested_dict_field(
+        self._epsilon_anneal_time = methods.get_nested_dict_field(
             directive=self._agent_configuration,
-            keys=["exploration", "epsilon_dec", "choice"],
+            keys=["exploration", "epsilon_anneal_time", "choice"],
+        )
+
+    def set_action_selector(self):
+        self._access_config_params()
+        self._action_selector = EpsilonGreedyActionSelector(
+            epsilon_start=self._epsilon_start,
+            epsilon_finish=self._epsilon_min,
+            epsilon_anneal_time=self._epsilon_anneal_time,
         )
 
     def reset_intrinsic_lstm_params(self):
@@ -128,15 +140,11 @@ class DRQNAgent:
                 tau * online_param.data + (1.0 - tau) * target_param.data
             )
 
-    def decrease_exploration(self):
-        """Decrease exploration parameters"""
-        decreased_epsilon = self._epsilon * self._epsilon_dec
-        self._epsilon = max(self._epsilon_min, decreased_epsilon)
-
     def access_agent_one_hot_id(self):
         """Access one hot id for the agent - that is added to the observation"""
+        self._agent_unique_id = self._agent_unique_id.to(self._acceleration_device)
         agent_one_hot_id = torch.nn.functional.one_hot(
-            torch.tensor(self._agent_unique_id, device=self._acceleration_device),
+            self._agent_unique_id,
             num_classes=self._num_agents,
         )
         return agent_one_hot_id
@@ -153,52 +161,65 @@ class DRQNAgent:
         return q_values
 
     def estimate_target_q_values(
-        self, target_observation: torch.Tensor, prev_action: torch.Tensor
+        self, target_observation: torch.Tensor, target_prev_action: torch.Tensor
     ):
         """Estiamte target action value functions"""
-        target_observation.to(self._acceleration_device)
 
         target_q_values, target_lstm_memory = self._target_drqn_network(
             observation=target_observation,
-            prev_action=prev_action,
+            prev_action=target_prev_action,
             hidden_state=self._target_hidden_state,
             cell_state=self._target_cell_state,
         )
         self._target_hidden_state, self._target_cell_state = target_lstm_memory
         return target_q_values
 
+    def reset_prev_action(self):
+        """reset information about previously taken action"""
+        self._prev_action = torch.zeros(
+            1, len(self._action_space), device=self._acceleration_device
+        )
+
     def act(
-        self, observation: np.ndarray, available_actions: np.ndarray, evaluate: bool
+        self,
+        observation: np.ndarray,
+        available_actions: list,
+        t_env: int,
+        evaluate: bool,
     ):
-        """Produce epsilon-greedy action given observation"""
-        if evaluate or np.random.random() > self._epsilon:
-            observation = torch.tensor(
-                observation, dtype=torch.float, device=self._acceleration_device
-            ).unsqueeze(0)
+        """
+        Produce an action for the given observation using the EpsilonGreedyActionSelector
+        """
+        # Convert observation to tensor and add batch dimension (batch size = 1)
+        observation_tensor = (
+            torch.tensor(observation).float().to(self._acceleration_device).unsqueeze(0)
+        )
 
-            q_values, lstm_memory = self._online_drqn_network(
-                observation,
-                self._prev_action,
-                self._hidden_state,
-                self._cell_state,
-            )
+        # Convert available actions to tensor
+        avail_actions_tensor = (
+            torch.tensor(available_actions)
+            .float()
+            .to(self._acceleration_device)
+            .unsqueeze(0)
+        )
 
-            # Mask unavailable actions
-            masked_q_values = q_values.clone()
-            masked_q_values[available_actions == 0.0] = -float("inf")
+        # Compute Q-values using the network (assuming self._online_drqn_network is your Q-network)
+        q_values, lstm_memory = self._online_drqn_network(
+            observation_tensor, self._prev_action, self._hidden_state, self._cell_state
+        )
 
-            # Select action with the highest Q-value among available actions
-            action = torch.argmax(masked_q_values).item()
+        # Use the selector to choose the action
+        action = self._action_selector.select_action(
+            q_values, avail_actions_tensor, t_env, test_mode=evaluate
+        ).item()
 
-            self._hidden_state, self._cell_state = lstm_memory
-            self._prev_action = torch.nn.functional.one_hot(
-                torch.tensor([action], device=self._acceleration_device),
-                num_classes=len(self._action_space),
-            )
+        # Update hidden states if your model uses LSTM or any other stateful layers
+        self._hidden_state, self._cell_state = lstm_memory
 
-        else:
-            # Random action selection among available actions
-            available_actions = np.nonzero(available_actions)[0]
-            action = np.random.choice(available_actions)
+        # Store the current action as the previous action for the next step, one-hot encoded
+        self._prev_action = torch.nn.functional.one_hot(
+            torch.tensor([action], device=self._acceleration_device),
+            num_classes=len(self._action_space),
+        )
 
         return action

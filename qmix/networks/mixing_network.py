@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from qmix.common import methods
 
@@ -7,65 +8,89 @@ from qmix.common import methods
 class MixingNetwork(nn.Module):
     def __init__(self, mixing_network_configuration, hypernetwork_configuration):
         super().__init__()
-        self._mixing_network_configuration = mixing_network_configuration
+        self._mixing_head_configuration = mixing_network_configuration
         self._hypernetwork_configuration = hypernetwork_configuration
+
+        self._state_dim = None
+        self._mixer_embed_dim = None
+        self._hypernet_embed_dim = None
+        self._n_agents = None
 
     def _access_config_params(self):
         """extract values given config dict"""
-        self.state_dim = methods.get_nested_dict_field(
+        self._state_dim = methods.get_nested_dict_field(
             directive=self._hypernetwork_configuration,
-            keys=["weight_updates", "model", "choice", "state_representation_size"],
+            keys=["model", "choice", "state_representation_size"],
         )
-        self.embed_dim = methods.get_nested_dict_field(
-            directive=self._mixing_network_configuration,
+        self._mixer_embed_dim = methods.get_nested_dict_field(
+            directive=self._mixing_head_configuration,
+            keys=["model", "choice", "hidden_layer_size"],
+        )
+
+        self._hypernet_embed_dim = methods.get_nested_dict_field(
+            directive=self._hypernetwork_configuration,
             keys=["model", "choice", "hidden_layer_size"],
         )
 
     def construct_network(self, num_agents: int):
         """given number of agents the method will construct each agent and return itself"""
         self._access_config_params()
+        self._n_agents = num_agents
 
         # State-dependent weights for the first layer
-        self.hyper_w_1 = nn.Linear(self.state_dim, self.embed_dim * num_agents)
+        self._hyper_w_1 = nn.Sequential(
+            nn.Linear(self._state_dim, self._hypernet_embed_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(self._hypernet_embed_dim, self._mixer_embed_dim * self._n_agents),
+        )
+
         # State-dependent bias for the first layer
-        self.hyper_b_1 = nn.Linear(self.state_dim, self.embed_dim)
+        self._hyper_b_1 = nn.Linear(self._state_dim, self._mixer_embed_dim)
 
         # State-dependent weights for the second layer
-        self.hyper_w_final = nn.Linear(self.state_dim, self.embed_dim)
+        self._hyper_w_final = nn.Sequential(
+            nn.Linear(self._state_dim, self._hypernet_embed_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(self._hypernet_embed_dim, self._mixer_embed_dim),
+        )
 
         # V(s) as a bias for the final output
-        self.V = nn.Sequential(
-            nn.Linear(self.state_dim, self.embed_dim),
-            nn.ReLU(),
-            nn.Linear(self.embed_dim, 1),
+        self._V = nn.Sequential(
+            nn.Linear(self._state_dim, self._mixer_embed_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(self._mixer_embed_dim, 1),
         )
 
         return self
 
     def forward(self, agent_qs, states):
-        # Reshape states - get rid of the first dimension as it is  1
-        states = states.squeeze(0)
+        # state shape: [batch_size, 168]
+        states = states.reshape(-1, self._state_dim)
 
-        # First layer
-        w1 = torch.abs(self.hyper_w_1(states))
-        b1 = self.hyper_b_1(states)
+        # First Layer
+        w1 = torch.abs(self._hyper_w_1(states))
+        b1 = self._hyper_b_1(states)
 
-        w1 = w1.view(-1, 8, self.embed_dim)
-        b1 = b1.view(-1, 1, self.embed_dim)
-        agent_qs = agent_qs.reshape(-1, 1, 8)
+        # w1 shape: [batch_size, 8, 32]
+        w1 = w1.reshape(-1, self._n_agents, self._mixer_embed_dim)
+        # b1 shape: [batch_size, 1, 32]
+        b1 = b1.reshape(-1, 1, self._mixer_embed_dim)
+        # agent_qs shape: [batch_size, 1, 8]
+        agent_qs = agent_qs.reshape(-1, 1, self._n_agents)
 
-        hidden = torch.nn.functional.elu(torch.bmm(agent_qs, w1) + b1)
+        # hidden shape: [batch_size, 1, 32]
+        hidden = F.elu(torch.bmm(agent_qs, w1) + b1)
 
-        # Second layer
-        w_final = torch.abs(self.hyper_w_final(states))
-        w_final = w_final.view(-1, self.embed_dim, 1)
+        w_final = torch.abs(self._hyper_w_final(states))
 
-        # State-dependent bias
-        v = self.V(states).view(-1, 1, 1)
+        # w_final shape: [batch_size, 32, 1]
+        w_final = w_final.reshape(-1, self._mixer_embed_dim, 1)
 
-        # Compute final output
-        y = torch.bmm(hidden, w_final) + v
+        value = self._V(states)
+        # value shape: [batch_size, 1, 1]
+        value = value.reshape(-1, 1, 1)
 
-        # Reshape and return
-        q_tot = y.view(agent_qs.size(0), -1, 1)
+        # q_tot shape: [batch_size, 1, 1]
+        q_tot = torch.bmm(hidden, w_final) + value
+
         return q_tot

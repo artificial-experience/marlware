@@ -60,18 +60,16 @@ class Tuner:
             self._trainable_construct.update_target_networks(
                 n_rollout, n_rollouts_per_target_swap=200
             )
-            self._trainable_construct.decrease_exploration_rate(
-                n_rollout, n_rollouts_per_epsilon_decrease=50
-            )
 
             if n_rollout % self._eval_schedule == 0:
                 mean_result = self._trainable_construct.evaluate(n_games=10)
                 mean_results.append(mean_result)
 
             if self._trainable_construct.memory_ready():
-                self._trainable_construct.optimize(n_rollout)
+                self._trainable_construct.optimize()
 
             self._trainable_construct.collect_rollouts()
 
         self._trainable_construct.close_env()
+
         return mean_results, (self._n_rollouts // self._eval_schedule)

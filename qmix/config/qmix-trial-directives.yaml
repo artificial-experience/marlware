@@ -16,14 +16,14 @@ tuner-directive:
       choice: 120
     n_rollouts:
       type: int
-      choice: 1_000
+      choice: 5_000
     eval_schedule:
       type: int
-      choice: 200
+      choice: 500
   checkpoint_configuration:
     checkpoint_frequency:
       type: int
-      choice: 200
+      choice: 500
     checkpoint_at_end:
       type: bool
       choice: true
