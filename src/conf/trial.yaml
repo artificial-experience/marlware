@@ -1,0 +1,35 @@
+# ----------------------------- #
+# ---- HYDRA CONFIGURATION ---- #
+# ----------------------------- #
+
+hydra:
+  run:
+    dir: ../outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+# -------------------------------- #
+# ---- DEFAULTS CONFIGURATION ---- #
+# -------------------------------- #
+
+defaults:
+  - trainable: base-qmix
+  - _self_
+
+# ----------------------------- #
+# ---- TRIAL CONFIGURATION ---- #
+# ----------------------------- #
+
+rollout:
+  train:
+    n_rollouts: 1_000
+  test:
+    eval_schedule: 200
+    checkpoint_frequency: 200
+    n_games: 40
+
+# ------------------------------ #
+# ---- DEVICE CONFIGURATION ---- #
+# ------------------------------ #
+
+device:
+  accelerator: "cpu"
+  seed: 91

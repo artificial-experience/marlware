@@ -161,3 +161,6 @@ cython_debug/
 
 # MacOS Stuff
 .DS_Store*
+
+# Hydra files
+outputs*

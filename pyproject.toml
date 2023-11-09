@@ -28,6 +28,10 @@ mypy = "^1.5.1"
 torchviz = "^0.0.2"
 matplotlib = "^3.8.0"
 tqdm = "^4.66.1"
+hydra-core = "^1.3.2"
+ray = {extras = ["data", "rllib", "serve", "train", "tune"], version = "^2.8.0"}
+omegaconf = "^2.3.0"
+hydra-colorlog = "^1.2.0"
 
 [build-system]
 requires = ["poetry-core"]
