@@ -1,6 +1,8 @@
 import numpy as np
+import torch
 from omegaconf import OmegaConf
 
+from src.cortex import MultiAgentCortex
 from src.environ.starcraft import SC2Environ
 from src.memory.buffer import GenericReplayMemory
 from src.memory.buffer import initialize_memory
@@ -18,7 +20,7 @@ class TrainableConstruct:
 
     Internal State:
         :param [trainable]: chosen trainable component to be used (e.g. BaseQMIX)
-        :param [multi_agent_controller]: controller to be used for multi-agent scenario
+        :param [multi_agent_cortex]: controller to be used for multi-agent scenario
         :param [memory]: replay memory instance
         :param [environ]: environment instance
         :param [environ_info]: environment informations (e.g. number of actions)
@@ -28,11 +30,16 @@ class TrainableConstruct:
     def __init__(self, conf: OmegaConf) -> None:
         self._conf = conf
 
+        # internal attrs
         self._trainable: arch.TrainableComponent = None
-        self._multi_agent_controller = None
+        self._mac = None
         self._memory = None
         self._environ = None
         self._environ_info = None
+
+        # optimization attrs
+        self._criterion = None
+        self._optimizer = None
 
     def _integrate_trainable(self, construct: str) -> arch.TrainableComponent:
         """check for registered constructs and integrate chosen one"""
@@ -48,8 +55,12 @@ class TrainableConstruct:
         )
         return trainable
 
-    def _integrate_multi_agent_controller(self):
-        pass
+    def _integrate_multi_agent_cortex(
+        self, model_conf: OmegaConf, exp_conf: OmegaConf
+    ) -> MultiAgentCortex:
+        """create multi-agent cortex for N agents"""
+        mac = MultiAgentCortex(model_conf, exp_conf)
+        return mac
 
     def _integrate_memory(
         self, memory_conf: OmegaConf, env_info: dict
@@ -114,9 +125,15 @@ class TrainableConstruct:
         self._trainable: arch.TrainableComponent = self._integrate_trainable(construct)
 
         self._environ, self._environ_info = self._integrate_environ(environ_prefix)
+        n_agents = self._environ_info.get("n_agents", 1)
 
         memory_conf = self._conf.buffer
         self._memory = self._integrate_memory(memory_conf, self._environ_info)
+
+        model_conf = self._conf.learner.model
+        exp_conf = self._conf.learner.exploration
+        self._mac = self._integrate_multi_agent_cortex(model_conf, exp_conf)
+        self._mac.ensemble_cortex(n_agents=n_agents)
 
     def optimize(self, n_rollouts: int = 100) -> np.ndarray:
         """optimize construct within n_rollouts"""

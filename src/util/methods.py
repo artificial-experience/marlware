@@ -1,3 +1,4 @@
+from collections import namedtuple
 from datetime import datetime
 from functools import reduce
 from functools import wraps
@@ -9,7 +10,10 @@ from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 import yaml
+from omegaconf import OmegaConf
+from torch.nn import functional as F
 
 
 def load_yaml(yaml_path: str):
@@ -43,6 +47,16 @@ def load_yaml(yaml_path: str):
         yaml_content = yaml.safe_load(yaml_file)
 
     return process_dict(yaml_content)
+
+
+def ensemble_learners(n_agents: int, impl: torch.nn.Module, conf: OmegaConf):
+    """prepare one hot encoding and create namedtuple consisting of N learners"""
+    Learners = namedtuple("Learners", ["agent" + str(i) for i in range(n_agents)])
+    one_hot_configs = [
+        F.one_hot(torch.tensor(i), num_classes=n_agents) for i in range(n_agents)
+    ]
+    learners = Learners(*[impl(conf, one_hot_configs[i]) for i in range(n_agents)])
+    return learners
 
 
 def get_current_timestamp(use_hour=True):

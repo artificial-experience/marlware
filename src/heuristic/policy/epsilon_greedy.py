@@ -1,31 +1,12 @@
 from functools import partialmethod
 
-import numpy as np
 import torch
 from torch.distributions import Categorical
 
-
-class DecayThenFlatSchedule:
-    def __init__(self, start, finish, time_length, decay="exp"):
-        self.start = start
-        self.finish = finish
-        self.time_length = time_length
-        self.delta = (self.start - self.finish) / self.time_length
-        self.decay = decay
-
-        if self.decay == "exp":
-            self.exp_scaling = (
-                (-1) * self.time_length / np.log(self.finish) if self.finish > 0 else 1
-            )
-
-    def eval(self, T):
-        if self.decay == "linear":
-            return max(self.finish, self.start - self.delta * T)
-        elif self.decay == "exp":
-            return min(self.start, max(self.finish, np.exp(-T / self.exp_scaling)))
+from src.heuristic.schedule import DecayThenFlatSchedule
 
 
-class EpsilonGreedyActionSelector:
+class EpsilonGreedy:
     def __init__(
         self, epsilon_start, epsilon_finish, epsilon_anneal_time, test_noise=0.0
     ):
@@ -35,9 +16,11 @@ class EpsilonGreedyActionSelector:
         self.epsilon = self.schedule.eval(0)
         self.test_noise = test_noise
 
-    def select_action(self, agent_inputs, avail_actions, t_env, test_mode=False):
+    def decide_actions(self, agent_inputs, avail_actions, timestep, test_mode=False):
         # Update epsilon according to the schedule or set to test noise level if in test mode
-        self.epsilon = self.schedule.eval(t_env) if not test_mode else self.test_noise
+        self.epsilon = (
+            self.schedule.eval(timestep) if not test_mode else self.test_noise
+        )
 
         # Mask actions that are excluded from selection
         masked_q_values = agent_inputs.clone()
@@ -62,5 +45,5 @@ class EpsilonGreedyActionSelector:
     # --- Partial Methods ---- #
     # ---- ---- ---- ---- ---- #
 
-    select_action_train = partialmethod(select_action, test_mode=False)
-    select_action_test = partialmethod(select_action, test_mode=True)
+    decide_actions_epsilon_greedily = partialmethod(decide_actions, test_mode=False)
+    decide_actions_greedily = partialmethod(decide_actions, test_mode=True)

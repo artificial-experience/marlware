@@ -32,3 +32,11 @@ class BaseQMIX(BaseConstruct):
     def __call__(self, batch: torch.Tensor) -> torch.Tensor:
         """takes batch and computes factorised q-value"""
         pass
+
+    def parameters(self):
+        """return hypernet and mixer optimization params"""
+        pass
+
+    def rnd_seed(self, *, seed: int = None):
+        """set random generator seed"""
+        pass
