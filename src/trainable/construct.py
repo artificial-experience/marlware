@@ -1,4 +1,5 @@
 import random
+from typing import Tuple
 
 import numpy as np
 import torch
@@ -26,6 +27,10 @@ class TrainableConstruct:
         :param [memory]: replay memory instance
         :param [environ]: environment instance
         :param [environ_info]: environment informations (e.g. number of actions)
+        :param [optimizer]: optimizer used to backward pass grads through eval nets
+        :param [params]: eval nets parameters
+        :param [grad_clip]: gradient clip to prevent exploding gradients and divergence
+        :param [trajectory_collector]: collector used to gather trajectories from environ
 
     """
 
@@ -40,8 +45,13 @@ class TrainableConstruct:
         self._environ_info = None
 
         # optimization attrs
-        self._criterion = None
         self._optimizer = None
+        self._params = []
+        self._grad_clip = 10.0
+        self._target_net_update_sched = 100
+
+        # trajectory collector
+        self._trajectory_collector = None
 
     def _integrate_trainable(
         self, construct: str, env_info: dict, seed: int
@@ -180,13 +190,63 @@ class TrainableConstruct:
             model_conf, exp_conf, self._environ_info, seed
         )
 
-    def optimize(self, n_rollouts: int = 100) -> np.ndarray:
-        """optimize construct within n_rollouts"""
+        # ---- ---- ---- ---- ---- #
+        # --- Gather Params -- --- #
+        # ---- ---- ---- ---- ---- #
+
+        # eval mixer params
+        construct_params = list(self._trainable.parameters())
+        self._params.extend(construct_params)
+        # eval drqn params
+        cortex_params = list(self._mac.parameters())
+        self._params.extend(cortex_params)
+
+        # ---- ---- ---- ---- ---- #
+        # --- Setup Optimizer  --- #
+        # ---- ---- ---- ---- ---- #
+
+        learning_rate = self._conf.learner.training.lr
+        self._optimizer = torch.optim.RMSprop(params=self._params, lr=learning_rate)
+
+        # ---- ---- ---- ---- ---- #
+        # --- Setup Grad Clip ---- #
+        # ---- ---- ---- ---- ---- #
+
+        self._grad_clip = self._conf.learner.training.grad_clip
+
+        # ---- ---- ---- ---- ---- #
+        # --- Setup Target Update  #
+        # ---- ---- ---- ---- ---- #
+
+        target_network_update_schedule = (
+            self._conf.learner.training.target_net_update_shedule
+        )
+        self._target_net_update_sched = target_network_update_schedule
+
+        # ---- ---- ---- ---- ---- #
+        # --- Setup Collector ---- #
+        # ---- ---- ---- ---- ---- #
+
+    def _collect_trajectories(
+        self, agent_actions: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """communicate with cortex to collect trajectories and store them in replay memory
+
+        takes batch of agent actions in order to step environ
+        returns feed and available actions as torch tensors
+        """
         pass
 
-    def evaluate(self, n_games: int = 10) -> np.ndarray:
-        """evaluate construct on n_games"""
+    def _evaluate(self, n_games: int = 10) -> np.ndarray:
+        """evaluate construct on N games"""
         pass
+
+    def optimize(self, n_rollouts: int = 100) -> np.ndarray:
+        """optimize construct within N rollouts"""
+        self._optimzer.zero_grad()
+        # loss.backward()
+        # grad_norm = torch.nn.utils.clip_grad_norm(self._params, self._grad_clip)
+        # self._optimizer.step()
 
     def save_models(self) -> bool:
         """save all models"""

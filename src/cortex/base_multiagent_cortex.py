@@ -1,5 +1,6 @@
 import copy
 import random
+from functools import partialmethod
 from typing import List
 
 import numpy as np
@@ -103,11 +104,16 @@ class MultiAgentCortex:
 
     def compute_actions(
         self,
-        observations: torch.Tensor,
+        feed: torch.Tensor,
         avail_actions: torch.Tensor,
         timestep: int,
-        evaluate: bool,
+        evaluate: bool = False,
     ) -> torch.Tensor:
+        """get feed and compute agents actions to take in the environment"""
+        pass
+
+    def estimate_q_vals(self, batch: torch.Tensor, use_target: bool = False):
+        """either use eval or target net to estimate q values"""
         pass
 
     def synchronize_target_net(self, tau: float = 1.0):
@@ -131,3 +137,13 @@ class MultiAgentCortex:
         """move models to cuda device"""
         self._eval_drqn_network.cuda()
         self._target_drqn_network.cuda()
+
+    # ---- ---- ---- ---- ---- #
+    # --- Partial Methods ---- #
+    # ---- ---- ---- ---- ---- #
+
+    compute_eps_greedy_actions = partialmethod(compute_actions, evaluate=False)
+    compute_greedy_actions = partialmethod(compute_actions, evaluate=True)
+
+    estaimte_eval_q_vals = partialmethod(estimate_q_vals, use_target=False)
+    estaimte_target_q_vals = partialmethod(estimate_q_vals, use_target=True)

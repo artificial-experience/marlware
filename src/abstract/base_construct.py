@@ -12,5 +12,5 @@ class BaseConstruct(ABC):
         pass
 
     @abstractmethod
-    def __call__(self, batch: torch.Tensor) -> torch.Tensor:
+    def calculate_loss(self, batch: torch.Tensor) -> torch.Tensor:
         pass
