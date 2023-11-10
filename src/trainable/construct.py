@@ -44,7 +44,7 @@ class TrainableConstruct:
         self._optimizer = None
 
     def _integrate_trainable(
-        self, construct: str, seed: int
+        self, construct: str, env_info: dict, seed: int
     ) -> arch.TrainableComponent:
         """check for registered constructs and integrate chosen one"""
         registered_constructs = global_registry.get_registered()
@@ -57,6 +57,12 @@ class TrainableConstruct:
         trainable = global_registry.get(construct)(
             construct_hypernet_conf, construct_mixer_conf
         )
+        n_agents = env_info.get("n_agents", None)
+        obs_dim = env_info.get("obs_shape", None)
+        state_dim = env_info.get("state_shape", None)
+        trainable.ensemble_construct(
+            n_agents=n_agents, observation_dim=obs_dim, state_dim=state_dim, seed=seed
+        )
         return trainable
 
     def _integrate_multi_agent_cortex(
@@ -65,9 +71,9 @@ class TrainableConstruct:
         """create multi-agent cortex for N agents"""
         n_agents = env_info.get("n_agents", None)
         n_actions = env_info.get("n_actions", None)
-        obs_shape = env_info.get("obs_shape", None)
+        obs_dim = env_info.get("obs_shape", None)
         mac = MultiAgentCortex(model_conf, exp_conf)
-        mac.ensemble_cortex(n_agents, n_actions, obs_shape, seed=seed)
+        mac.ensemble_cortex(n_agents, n_actions, obs_dim, seed=seed)
         return mac
 
     def _integrate_memory(
@@ -141,15 +147,32 @@ class TrainableConstruct:
     ) -> None:
         """based on conf delegate construct object with given parameters"""
         self._rnd_seed(seed=seed)
-        construct: str = self._conf.trainable.construct.impl
-        self._trainable: arch.TrainableComponent = self._integrate_trainable(
-            construct, seed
-        )
+
+        # ---- ---- ---- ---- ---- #
+        # --- Integrate Environ -- #
+        # ---- ---- ---- ---- ---- #
 
         self._environ, self._environ_info = self._integrate_environ(environ_prefix)
 
+        # ---- ---- ---- ---- ---- #
+        # -- Integrate Construct - #
+        # ---- ---- ---- ---- ---- #
+
+        construct: str = self._conf.trainable.construct.impl
+        self._trainable: arch.TrainableComponent = self._integrate_trainable(
+            construct, self._environ_info, seed
+        )
+
+        # ---- ---- ---- ---- ---- #
+        # --- Integrate Memory --- #
+        # ---- ---- ---- ---- ---- #
+
         memory_conf = self._conf.buffer
         self._memory = self._integrate_memory(memory_conf, self._environ_info)
+
+        # ---- ---- ---- ---- ---- #
+        # --- Integrate Cortex --- #
+        # ---- ---- ---- ---- ---- #
 
         model_conf = self._conf.learner.model
         exp_conf = self._conf.learner.exploration

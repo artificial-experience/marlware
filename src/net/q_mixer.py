@@ -1,36 +1,58 @@
+import random
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from omegaconf import OmegaConf
 
 
-class MixingNetwork(nn.Module):
+class QMixer(nn.Module):
     """
-    Deep recurrent Q-network implementation
-    Network's forward method operates on obesrvation and previous action
-    Network will return approximated q-values and updated cell state and hidden state
+    Mixing Network implementation for value based training
+    Takes as input agent q values and calculates single value
+    Allows for decomposition and credit assignment for agents
+    Uses hypernetworks to create weights for main net
+    Uses abs activation to ensure monotonicity of updates
 
     Args:
-        :param [conf]: network configuration OmegaConf
+        :param [hypernet_embed_dim]: dimension of hypernetwork embedding
+        :param [mixer_embed_dim]: dimension of mixer head embedding
+        :param [n_hypernet_layers]: number of hypernet layers to calculate weights
 
     Internal State:
-        :param [model_observation_size]: shape of observation array
-        :param [model_n_actions]: number of actions available to approximate q-values
-        :param [model_embedding_size]: shape of embedding array
-        :param [model_hidden_state_size]: shape of hidden state array
-        :param [model_n_q_values]: number of q-values to approximate (output from network)
+        :pram [state_dim]: dimension of information for centraliazed training
+        :pram [n_agents]: number of learners
 
     """
 
-    def __init__(self, conf: OmegaConf) -> None:
+    def __init__(
+        self, hypernet_embed_dim: int, mixer_embed_dim: int, n_hypernet_layers: int
+    ) -> None:
         super().__init__()
-        self._conf = conf
+        self._hypernet_embed_dim = hypernet_embed_dim
+        self._mixer_embed_dim = mixer_embed_dim
+        self._n_hypernet_layers = n_hypernet_layers
 
-        self._hypernet_embed_dim = None
-        self._mixer_embed_dim = None
+        # internal attrs
+        self._n_agents = None
+        self._state_dim = None
 
-    def integrate_network(self, n_agents: int, state_dim: int):
+    def _rnd_seed(self, *, seed: int = None):
+        """set random generator seed"""
+        if seed:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+
+    def integrate_network(self, n_agents: int, state_dim: int, *, seed: int = None):
         """given number of agents the method will construct each agent and return itself"""
+        self._rnd_seed(seed=seed)
+
+        # keep info for mixer magic
+        self._n_agents = n_agents
+        self._state_dim = state_dim
 
         # State-dependent weights for the first layer
         self._hyper_w_1 = nn.Sequential(
@@ -56,7 +78,7 @@ class MixingNetwork(nn.Module):
             nn.Linear(self._mixer_embed_dim, 1),
         )
 
-    def forward(self, agent_qs, states):
+    def forward(self, agent_qs: torch.Tensor, states: torch.Tensor):
         # state shape: [batch_size, 168]
         states = states.reshape(-1, self._state_dim)
 

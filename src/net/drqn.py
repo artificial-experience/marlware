@@ -3,7 +3,6 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
-from omegaconf import OmegaConf
 
 
 class DRQN(nn.Module):
@@ -34,7 +33,6 @@ class DRQN(nn.Module):
         """given input dimension construct network"""
         self._rnd_seed(seed=seed)
 
-        # Initial MLP: (observation + last action one hot encoded + agent id one hot encoded) -> embedding
         self._fc1 = nn.Sequential(
             nn.Linear(input_dim, self._rnn_hidden_dim),
             nn.ReLU(inplace=True),
@@ -48,7 +46,7 @@ class DRQN(nn.Module):
         """return initial hidden state tensor filled with 0s that are on the same device as model"""
         return self._fc1.weight.new(1, self._rnn_hidden_dim).zero_()
 
-    def __call__(
+    def forward(
         self,
         feed: torch.Tensor,
         hidden_state: torch.Tensor = None,
