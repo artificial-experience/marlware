@@ -1,3 +1,6 @@
+import random
+
+import numpy as np
 import torch
 import torch.nn as nn
 from omegaconf import OmegaConf
@@ -10,58 +13,56 @@ class DRQN(nn.Module):
     Network will return approximated q-values and updated cell state and hidden state
 
     Args:
-        :param [conf]: network configuration OmegaConf
-
-    Internal State:
-        :param [model_embedding_dim]: shape of embedding array
-        :param [model_hidden_state_dim]: shape of hidden state array
+        :param [rnn_hidden_dim]: shape of hidden state array
 
     """
 
-    def __init__(self, conf: OmegaConf):
+    def __init__(self, rnn_hidden_dim: int) -> None:
         super().__init__()
-        self._conf = conf
+        self._rnn_hidden_dim = rnn_hidden_dim
 
-        self._embedding_dim = None
-        self._hidden_state_dim = None
+    def _rnd_seed(self, *, seed: int = None):
+        """set random generator seed"""
+        if seed:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
 
-    def integrate_network(self, n_agents: int, n_actions: int, observation_dim: tuple):
-        """given number of agents the method will construct each agent and return itself"""
+    def integrate_network(self, input_dim: int, n_q_values: int, *, seed: int = None):
+        """given input dimension construct network"""
+        self._rnd_seed(seed=seed)
 
         # Initial MLP: (observation + last action one hot encoded + agent id one hot encoded) -> embedding
-        self._mlp1 = nn.Sequential(
-            nn.Linear(
-                self._model_observation_size + self._model_n_actions + n_agents,
-                self._model_embedding_size,
-            ),
-            nn.ReLU(),
+        self._fc1 = nn.Sequential(
+            nn.Linear(input_dim, self._rnn_hidden_dim),
+            nn.ReLU(inplace=True),
         )
 
-        self._gru = nn.GRUCell(
-            self._model_embedding_size, self._model_hidden_state_size
-        )
+        self._rnn = nn.GRUCell(self._rnn_hidden_dim, self._rnn_hidden_dim)
 
-        self._mlp2 = nn.Sequential(
-            nn.Linear(self._model_hidden_state_size, self._model_n_q_values)
-        )
+        self._fc2 = nn.Linear(self._rnn_hidden_dim, n_q_values)
+
+    def init_hidden_state(self) -> torch.Tensor:
+        """return initial hidden state tensor filled with 0s that are on the same device as model"""
+        return self._fc1.weight.new(1, self._rnn_hidden_dim).zero_()
 
     def __call__(
         self,
-        observation: torch.Tensor,
-        prev_action: torch.Tensor,
-        hidden_state: torch.Tensor,
+        feed: torch.Tensor,
+        hidden_state: torch.Tensor = None,
     ):
-        """network inference method"""
-        collective_input = torch.cat([observation, prev_action], axis=-1)
-        x = self._mlp1(collective_input)
-        x = x.squeeze(0)
+        # batch_size X n_agents X embedding - [ 32, 8, 102 ]
+        bs, n_agents, embed = feed.size()
 
-        updated_hidden_states = []
-        for batch_idx in range(x.size(0)):
-            updated_hidden_state = self._gru(x[batch_idx, :], hidden_state)
-            updated_hidden_states.append(updated_hidden_state)
+        out = self._fc1(feed)
 
-        t_updated_hidden_states = torch.stack(updated_hidden_states, 0)
+        # reshape hidden state in case it does not match embedding dimension
+        if hidden is not None:
+            hidden = hidden.reshape(-1, self._rnn_hidden_dim)
 
-        q_values = self._mlp2(t_updated_hidden_states)
-        return q_values, updated_hidden_state
+        hidden = self._rnn(out, hidden_state)
+        q_vals = self._fc2(hidden)
+
+        return q_vals.view(bs, n_agents, -1), hidden.view(bs, n_agents, -1)

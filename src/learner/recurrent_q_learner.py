@@ -28,17 +28,14 @@ class RecurrentQLearner:
     def share_networks(
         self, eval_net: torch.nn.Module, target_net: torch.nn.Module
     ) -> None:
-        """create q learner by assigning shared eval and target nets"""
-        pass
+        """assign shared networks to learner"""
+        self._eval_net = eval_net
+        self._target_net = target_net
 
-    def estimate_q_value(
-        self, observation: torch.Tensor, action: torch.Tensor, use_target=False
-    ) -> torch.Tensor:
-        """estimate q value given observation and action [ prev action ]"""
-        pass
-
-    def parameters():
-        """get agent optimization parameters"""
+    def estimate_q_value(self, feed: torch.Tensor, use_target=False) -> torch.Tensor:
+        """estimate q value given feed tensor"""
+        q_vals = self._target_net(feed) if use_target else self._eval_net(feed)
+        return q_vals
 
     # ---- ---- ---- ---- ---- #
     # --- Partial Methods ---- #

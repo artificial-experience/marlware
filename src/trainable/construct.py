@@ -1,3 +1,5 @@
+import random
+
 import numpy as np
 import torch
 from omegaconf import OmegaConf
@@ -41,7 +43,9 @@ class TrainableConstruct:
         self._criterion = None
         self._optimizer = None
 
-    def _integrate_trainable(self, construct: str) -> arch.TrainableComponent:
+    def _integrate_trainable(
+        self, construct: str, seed: int
+    ) -> arch.TrainableComponent:
         """check for registered constructs and integrate chosen one"""
         registered_constructs = global_registry.get_registered()
         is_registered = construct in registered_constructs
@@ -56,10 +60,14 @@ class TrainableConstruct:
         return trainable
 
     def _integrate_multi_agent_cortex(
-        self, model_conf: OmegaConf, exp_conf: OmegaConf
+        self, model_conf: OmegaConf, exp_conf: OmegaConf, env_info: dict, seed: int
     ) -> MultiAgentCortex:
         """create multi-agent cortex for N agents"""
+        n_agents = env_info.get("n_agents", None)
+        n_actions = env_info.get("n_actions", None)
+        obs_shape = env_info.get("obs_shape", None)
         mac = MultiAgentCortex(model_conf, exp_conf)
+        mac.ensemble_cortex(n_agents, n_actions, obs_shape, seed=seed)
         return mac
 
     def _integrate_memory(
@@ -119,21 +127,35 @@ class TrainableConstruct:
         assert env is not None, "Environment cound not be created"
         return env, env_info
 
-    def commit(self, environ_prefix: str, accelerator: str, *, seed=None) -> None:
+    def _rnd_seed(self, *, seed: int = None):
+        """set random seed"""
+        if seed:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+
+    def commit(
+        self, environ_prefix: str, accelerator: str, *, seed: int = None
+    ) -> None:
         """based on conf delegate construct object with given parameters"""
+        self._rnd_seed(seed=seed)
         construct: str = self._conf.trainable.construct.impl
-        self._trainable: arch.TrainableComponent = self._integrate_trainable(construct)
+        self._trainable: arch.TrainableComponent = self._integrate_trainable(
+            construct, seed
+        )
 
         self._environ, self._environ_info = self._integrate_environ(environ_prefix)
-        n_agents = self._environ_info.get("n_agents", 1)
 
         memory_conf = self._conf.buffer
         self._memory = self._integrate_memory(memory_conf, self._environ_info)
 
         model_conf = self._conf.learner.model
         exp_conf = self._conf.learner.exploration
-        self._mac = self._integrate_multi_agent_cortex(model_conf, exp_conf)
-        self._mac.ensemble_cortex(n_agents=n_agents)
+        self._mac = self._integrate_multi_agent_cortex(
+            model_conf, exp_conf, self._environ_info, seed
+        )
 
     def optimize(self, n_rollouts: int = 100) -> np.ndarray:
         """optimize construct within n_rollouts"""

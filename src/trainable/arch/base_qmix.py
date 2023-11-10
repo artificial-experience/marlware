@@ -24,10 +24,25 @@ class BaseQMIX(BaseConstruct):
         self._hypernet_conf = hypernet_conf
         self._mixer_conf = mixer_conf
 
+    def _rnd_seed(self, *, seed: int = None):
+        """set random generator seed"""
+        if seed:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+
     def ensemble_construct(
-        self, n_agents: int, n_actions: int, observation_dim: tuple, state_dim: tuple
+        self,
+        n_agents: int,
+        n_actions: int,
+        observation_dim: tuple,
+        state_dim: tuple,
+        *,
+        seed: int = None
     ) -> None:
-        pass
+        self._rnd_seed(seed=seed)
 
     def __call__(self, batch: torch.Tensor) -> torch.Tensor:
         """takes batch and computes factorised q-value"""

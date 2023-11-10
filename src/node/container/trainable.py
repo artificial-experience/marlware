@@ -27,8 +27,7 @@ class LearnerTrainingConfig:
 
 @dataclass
 class LearnerModelConfig:
-    embedding_dim: int
-    hidden_state_dim: int
+    rnn_hidden_dim: int
 
 
 @dataclass
@@ -57,6 +56,7 @@ class BufferConfig:
     max_size: int
     batch_size: int
     prioritized: bool
+    mode: str
 
 
 @dataclass
