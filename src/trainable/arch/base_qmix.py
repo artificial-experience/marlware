@@ -129,14 +129,22 @@ class BaseQMIX(BaseConstruct):
 
         states = feed.get("states", None)
         next_states = feed.get("next_states", None)
-        avail_actions = feed.get("avail_actions", None)
+        next_avail_actions = feed.get("next_avail_actions", None)
         rewards = feed.get("rewards", None)
         terminated = feed.get("dones", None)
+
+        # align shapes
+        next_avail_actions = next_avail_actions.permute(1, 0, 2)
+
+        # clone targets and mask
+        masked_target_q_vals = target_q_vals.clone()
+        masked_target_q_vals[next_avail_actions == 0] = -float("inf")
 
         # take maximum actions - Bellman opimality equation
         target_max_q_values, max_indices = torch.max(
             target_q_vals, dim=-1, keepdim=True
         )
+
         # reshape tensor1 to match the dimensions of tensor2 for gathering
         actions_taken = prev_actions.squeeze(-1).permute(1, 0)  # Reshape to [8, 32]
         # use gather to select elements

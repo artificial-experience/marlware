@@ -29,7 +29,7 @@ learner:
   exploration:
     epsilon_start: 1.0
     epsilon_min: 0.05
-    epsilon_anneal_steps: 50_000
+    epsilon_anneal_steps: 10_000
 
 # ------------------------------ #
 # ---- BUFFER CONFIGURATION ---- #

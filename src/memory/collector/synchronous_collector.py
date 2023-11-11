@@ -66,6 +66,7 @@ class SynchronousCollector:
                 feed["states"],
                 feed["next_states"],
                 feed["avail_actions"],
+                feed["next_avail_actions"],
             ]
             self._memory.store_transition(data)
         else:
@@ -84,8 +85,8 @@ class SynchronousCollector:
             [actions[i].item() in avail_actions_idx[i] for i in range(len(actions))]
         )
         assert actions_ok, "Some action was not allowed by the environment"
-        reward, terminated, _ = self._environ.step(actions)
-        return reward, terminated
+        reward, terminated, info = self._environ.step(actions)
+        return reward, terminated, info
 
     def roll_environ_and_collect_trajectory(self, mac: MultiAgentCortex) -> None:
         """communicate with cortex to collect trajectories and store them in replay memory"""
@@ -109,6 +110,7 @@ class SynchronousCollector:
             "states": None,
             "next_states": None,
             "avail_actions": None,
+            "next_avail_actions": None,
         }
 
         while not terminated:
@@ -120,20 +122,24 @@ class SynchronousCollector:
                 observations, prev_actions, avail_actions, self._timesteps
             )
             actions = np.expand_dims(actions, axis=1)
-            reward, terminated = self._execute_actions(actions, avail_actions)
+            reward, terminated, info = self._execute_actions(actions, avail_actions)
+            truncated = info.get("episode_limit", False)
+            done = terminated != truncated
 
             next_observations = np.array(self._environ.get_obs(), dtype=np.float32)
             next_states = np.array(self._environ.get_state(), dtype=np.float32)
+            next_avail_actions = self._get_avail_actions(n_agents)
 
             feed["observations"] = observations
             feed["actions"] = actions
             feed["reward"] = reward
             feed["next_observations"] = next_observations
-            feed["terminated"] = terminated
+            feed["terminated"] = done
             feed["prev_actions"] = prev_actions
             feed["states"] = states
             feed["next_states"] = next_states
             feed["avail_actions"] = avail_actions
+            feed["next_avail_actions"] = next_avail_actions
 
             self._store_trajectory(feed)
 

@@ -133,6 +133,7 @@ class MultiAgentCortex:
         }
 
         t_multi_agent_q_vals = self.estimate_eval_q_vals(feed)
+        t_multi_agent_q_vals = t_multi_agent_q_vals.detach()
 
         # n_agents X batch_size X n_q_vals
         t_avail_actions = torch.tensor(avail_actions, dtype=torch.float32).view(
