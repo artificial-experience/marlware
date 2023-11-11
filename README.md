@@ -1,27 +1,25 @@
-# Marl-Revamped-QMIX
+# Marl-Engineering: Modular Multi-Agent Reinforcement Learning
 
-Welcome to Marl-Revamped-QMIX, a project which is not just about implementation of the Monotonic Value Function Factorisation (QMIX) algorithm, but also about my personal journey through the fascinating world of Deep Multi-Agent Reinforcement Learning (MARL). As a testament to my learning process, this repository reflects a growing understanding of complex multi-agent systems and deep learning models.
+Welcome to Marl-Engineering, a repository dedicated to developing a robust and modular framework for Multi-Agent Reinforcement Learning (MARL) algorithms. This project is a testament to my commitment to advancing research in MARL by focusing on modular design, code readability, and reproducibility of results.
 
-## A Learning Journey
+## The Marl-Engineering Mission
 
-Note on my approach to Marl-Revamped-QMIX. This isn't just a project for me, but a real learning adventure into the world of Deep Multi-Agent Reinforcement Learning (MARL). I'm not chasing perfection right out of the gate here. Instead, I'm taking it slow and steady, committed to fully understanding every aspect of MARL and the QMIX algorithm.
+Marl-Engineering is more than a codebase; it's an evolving platform for deep exploration and experimentation in the field of Deep MARL. It represents my journey in understanding and applying complex multi-agent systems and deep learning models. I approach this project not just as a developer but as a learner, deeply committed to comprehending every aspect of MARL.
 
-My way of doing things? I dig deep. I mean, really deep. I've found myself reading the same academic papers over ten times just to make sure I get it. Once I feel like I've wrapped my head around the theories and concepts, I get my hands dirty and start putting those principles into practice, one small piece at a time. It's like solving a massive jigsaw puzzle, where every bit of knowledge puts me closer to seeing the big picture.
+This repository is designed to be modular, allowing researchers and enthusiasts to plug in different MARL algorithms and compare their performance in various settings. The focus on modularity also enables easier experimentation and adaptation of new methods and ideas in the field.
 
-As I keep learning and growing, I have plans to beef up Marl-Revamped-QMIX. I'm looking to integrate it with cool technologies like Nvidia Isaac Gym and AWS Cloud services. This should make it a pretty handy tool for anyone interested in MARL.
+## Key Features
 
-## What Is QMIX?
+- **Modular Architecture**: Marl-Engineering is structured to support a range of MARL algorithms, with each component designed to be interchangeable and customizable. This modularity allows for extensive experimentation and adaptation.
 
-QMIX is a renowned value-based method in the sphere of MARL, acclaimed for its superior performance in a range of cooperative multi-agent reinforcement learning scenarios. It cleverly combines a centralized critic with decentralized actors, allowing for effective, tractable solutions to multi-agent tasks.
+- **Code Readability and Maintenance**: Emphasis is placed on clear, well-documented code to facilitate understanding and further development. This approach enhances the learning experience for those new to the field and maintains high standards for code quality.
 
-The magic of QMIX lies in its unique value decomposition technique: it decomposes the joint action-value function into individual per-agent utilities. This enables decentralized policy optimization while preserving the promise of global optimality.
+- **Reproducibility of Results**: Ensuring the reproducibility of results is a core principle of Marl-Engineering. The repository is structured to enable researchers to replicate experiments and validate findings easily.
 
-## Features
+## Applications and Use Cases
 
-- **Comprehensive**: This reimplementation is as faithful as possible to the original QMIX algorithm, ensuring all its features are accurately replicated.
+Marl-Engineering is ideal for tackling complex cooperative tasks that require coordination among multiple agents. Its applications span across various domains, such as strategic games, collaborative robotics, and multi-agent simulations. By providing a flexible and adaptable framework, Marl-Engineering aims to push the boundaries of what's possible in the realm of MARL.
 
-- **Modular design**: I have designed the project with modularity in mind. This offers high customizability to users who wish to experiment with individual components.
+## Join the Journey
 
-## Application Domains
-
-QMIX is particularly useful for cooperative tasks requiring multiple agents to work collectively towards a common goal. The applications are varied and include collaborative games, robot teams, and autonomous driving among others.
+As Marl-Engineering continues to grow, I plan to integrate cutting-edge technologies and methodologies to enhance its capabilities further. I invite collaborators, researchers, and enthusiasts to join me in this exciting journey of discovery and innovation in the world of Multi-Agent Reinforcement Learning.
