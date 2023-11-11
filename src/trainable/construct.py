@@ -118,17 +118,25 @@ class TrainableConstruct:
         next_states_field = "next_states"
         next_states_vals = np.zeros([max_size, state_shape], dtype=np.float32)
 
+        next_avail_actions_field = "next_avail_actions"
+        next_avail_actions_vals = np.zeros(
+            [max_size, n_agents, n_actions], dtype=np.int64
+        )
+
         extra_fields = (
             prev_actions_field,
             states_field,
             next_states_field,
             avail_actions_field,
+            next_avail_actions_field,
+
         )
         extra_vals = (
             prev_actions_vals,
             states_vals,
             next_states_vals,
             avail_actions_vals,
+            next_avail_actions_vals,
         )
 
         memory = initialize_memory(
@@ -313,6 +321,8 @@ class TrainableConstruct:
             states,
             next_states,
             avail_actions,
+            next_avail_actions,
+
         ) = batch
 
         # Convert each numpy array in the batch to a torch tensor and move it to the specified device
@@ -335,6 +345,10 @@ class TrainableConstruct:
         avail_actions = torch.tensor(avail_actions, dtype=torch.int64).to(
             self._accelerator
         )
+        next_avail_actions = torch.tensor(next_avail_actions, dtype=torch.int64).to(
+            self._accelerator
+        )
+
 
         # Return the tensors as a list
         return [
@@ -347,6 +361,8 @@ class TrainableConstruct:
             states,
             next_states,
             avail_actions,
+            next_avail_actions,
+
         ]
 
     def optimize(
@@ -359,6 +375,8 @@ class TrainableConstruct:
         """optimize construct within N rollouts"""
 
         for rollout in range(n_rollouts):
+            print(f"rollout: {rollout} % {n_rollouts}")
+
             # synchronize target nets with online updates
             if rollout % self._target_net_update_sched == 0:
                 self._synchronize_target_nets()
@@ -369,8 +387,6 @@ class TrainableConstruct:
 
             # if memory ready optimize network
             if self._trajectory_collector.memory_ready():
-                # zero optimizer
-                self._optimizer.zero_grad()
 
                 batch = self._trajectory_collector.sample_batch()
                 t_batch = self._move_batch_to_tensors(batch)
@@ -385,6 +401,7 @@ class TrainableConstruct:
                     states,
                     next_states,
                     avail_actions,
+                    next_avail_actions,
                 ) = t_batch
 
                 # prepare feed for networks
@@ -414,6 +431,7 @@ class TrainableConstruct:
                     "states": states,
                     "next_states": next_states,
                     "avail_actions": avail_actions,
+                    "next_avail_actions": next_avail_actions,
                     "rewards": rewards,
                     "dones": dones,
                 }
@@ -423,14 +441,16 @@ class TrainableConstruct:
                     eval_q_vals=eval_net_q_estimates,
                     target_q_vals=target_net_q_estimates,
                 )
+
+                self._optimizer.zero_grad()
+
                 construct_loss.backward()
+
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self._params, self._grad_clip
                 )
-                self._optimizer.step()
 
-                print("Current Rollout: ", rollout)
-                print("Current Loss: ", construct_loss)
+                self._optimizer.step()
 
             # use multi agent cortex to collect rollouts
             self._trajectory_collector.roll_environ_and_collect_trajectory(
