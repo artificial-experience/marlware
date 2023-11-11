@@ -35,7 +35,10 @@ class BaseQMIX(BaseConstruct):
         # internal attrs
         self._eval_mixer = None
         self._target_mixer = None
+
+        # loss calculation
         self._criterion = None
+        self._gamma = None
 
     def _rnd_seed(self, *, seed: int = None):
         """set random generator seed"""
@@ -47,7 +50,13 @@ class BaseQMIX(BaseConstruct):
             random.seed(seed)
 
     def ensemble_construct(
-        self, n_agents: int, observation_dim: int, state_dim: int, *, seed: int = None
+        self,
+        n_agents: int,
+        observation_dim: int,
+        state_dim: int,
+        gamma: float,
+        *,
+        seed: int = None
     ) -> None:
         self._rnd_seed(seed=seed)
 
@@ -73,6 +82,7 @@ class BaseQMIX(BaseConstruct):
         # ---- ---- ---- ---- ---- ---- #
 
         self._criterion = torch.nn.MSELoss()
+        self._gamma = gamma
 
     def factorize_q_vals(
         self, agent_qs: torch.Tensor, states: torch.Tensor, use_target: bool = False
@@ -107,9 +117,45 @@ class BaseQMIX(BaseConstruct):
         self._eval_mixer.cuda()
         self._target_mixer.cuda()
 
-    def calculate_loss(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def calculate_loss(
+        self,
+        feed: Dict[str, torch.Tensor],
+        eval_q_vals: torch.Tensor,
+        target_q_vals: torch.Tensor,
+    ) -> torch.Tensor:
         """use partial methods to calcualte criterion loss between eval and target"""
-        pass
+        prev_actions = feed.get("prev_actions", None)
+        actions = feed.get("actions", None)
+
+        states = feed.get("states", None)
+        next_states = feed.get("next_states", None)
+        avail_actions = feed.get("avail_actions", None)
+        rewards = feed.get("rewards", None)
+        terminated = feed.get("dones", None)
+
+        # take maximum actions - Bellman opimality equation
+        target_max_q_values, max_indices = torch.max(
+            target_q_vals, dim=-1, keepdim=True
+        )
+        # reshape tensor1 to match the dimensions of tensor2 for gathering
+        actions_taken = prev_actions.squeeze(-1).permute(1, 0)  # Reshape to [8, 32]
+        # use gather to select elements
+        eval_chosen_q_vals = torch.gather(
+            eval_q_vals, dim=2, index=actions_taken.unsqueeze(-1)
+        )
+
+        eval_factorized_values = self.factorize_eval_q_vals(eval_chosen_q_vals, states)
+        target_factorized_values = self.factorize_target_q_vals(
+            target_max_q_values, next_states
+        )
+
+        td_targets = rewards + self._gamma * (1 - terminated) * target_factorized_values
+
+        # detach target from computation graph
+        td_targets = td_targets.detach()
+
+        loss = self._criterion(eval_factorized_values, td_targets)
+        return loss
 
     # ---- ---- ---- ---- ---- #
     # --- Partial Methods ---- #

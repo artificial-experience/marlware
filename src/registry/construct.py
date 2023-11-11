@@ -22,7 +22,7 @@ class ConstructRegistry:
         if self._instance._registry:
             return self._instance._registry
         else:
-            print("No classes are registered.")
+            raise RuntimeError("No classes are registered.")
 
 
 # Singleton instance of the registry that will be used by the decorator

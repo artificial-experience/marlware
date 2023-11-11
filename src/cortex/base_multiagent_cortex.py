@@ -115,18 +115,21 @@ class MultiAgentCortex:
         """get feed and compute agents actions to take in the environment"""
 
         # get num of agents and num of q-values
-        n_agents, n_q_values = avail_actions.shape
+        avail_actions = np.expand_dims(avail_actions, axis=0)
+        bs, n_agents, n_q_values = avail_actions.shape
 
-        t_observations = torch.tensor(observations, dtype=torch.float32)
-        t_prev_actions = torch.tensor(prev_actions, dtype=torch.int64)
-        t_prev_actions_one_hot = F.one_hot(t_prev_actions, num_classes=n_q_values).view(
-            n_agents, n_q_values
+        t_observations = torch.tensor(observations, dtype=torch.float32).view(
+            bs, n_agents, -1
+        )
+        t_prev_actions = torch.tensor(prev_actions, dtype=torch.int64).view(
+            bs, n_agents, -1
         )
 
         # prepare fed for the agent
         feed = {
             "observations": t_observations,
-            "prev_actions": t_prev_actions_one_hot,
+            "actions": t_prev_actions,
+            "avail_actions": avail_actions,
         }
 
         t_multi_agent_q_vals = self.estimate_eval_q_vals(feed)

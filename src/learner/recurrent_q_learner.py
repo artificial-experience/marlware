@@ -42,24 +42,39 @@ class RecurrentQLearner:
     ) -> torch.Tensor:
         """estimate q value given feed tensor"""
         observations = feed.get("observations", None)
-        prev_actions_one_hot = feed.get("prev_actions", None)
+        prev_actions = feed.get("actions", None)
+        avail_actions = feed.get("avail_actions", None)
 
-        agent_identifier_one_hot = self.one_hot_identifier
+        bs, n_agents, n_q_values = avail_actions.shape
+
+        prev_actions_one_hot = F.one_hot(prev_actions, num_classes=n_q_values).view(
+            bs, n_agents, n_q_values
+        )
+
+        agent_identifier_one_hot = self.one_hot_identifier.view(1, -1)
+        agent_identifier_one_hot = agent_identifier_one_hot.repeat(bs, 1)
         serialized_identifier = torch.argmax(agent_identifier_one_hot)
 
         # get current agent's observations slices
-        agent_observations = observations[serialized_identifier, :]
-        agent_prev_actions = prev_actions_one_hot[serialized_identifier, :]
+        agent_observations = observations[:, serialized_identifier, :]
+        agent_prev_actions = prev_actions_one_hot[:, serialized_identifier, :]
 
         prepared_feed = torch.cat(
             [agent_observations, agent_prev_actions, agent_identifier_one_hot], dim=-1
         )
-        prepared_feed = prepared_feed.view(1, -1)
+        prepared_feed = prepared_feed.view(bs, -1)
+
+        # zero hidden state before every update
+        initial_hidden = (
+            self._target_net.init_hidden_state(bs)
+            if use_target
+            else self._eval_net.init_hidden_state(bs)
+        )
 
         q_vals, hidden = (
-            self._target_net(prepared_feed)
+            self._target_net(prepared_feed, initial_hidden)
             if use_target
-            else self._eval_net(prepared_feed)
+            else self._eval_net(prepared_feed, initial_hidden)
         )
         return q_vals, hidden
 

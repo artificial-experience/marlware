@@ -3,6 +3,7 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class DRQN(nn.Module):
@@ -33,18 +34,13 @@ class DRQN(nn.Module):
         """given input dimension construct network"""
         self._rnd_seed(seed=seed)
 
-        self._fc1 = nn.Sequential(
-            nn.Linear(input_dim, self._rnn_hidden_dim),
-            nn.ReLU(inplace=True),
-        )
-
+        self._fc1 = nn.Linear(input_dim, self._rnn_hidden_dim)
         self._rnn = nn.GRUCell(self._rnn_hidden_dim, self._rnn_hidden_dim)
-
         self._fc2 = nn.Linear(self._rnn_hidden_dim, n_q_values)
 
-    def init_hidden_state(self) -> torch.Tensor:
+    def init_hidden_state(self, batch_size: int) -> torch.Tensor:
         """return initial hidden state tensor filled with 0s that are on the same device as model"""
-        return self._fc1.weight.new(1, self._rnn_hidden_dim).zero_()
+        return self._fc1.weight.new(batch_size, self._rnn_hidden_dim).zero_()
 
     def forward(
         self,
@@ -54,13 +50,17 @@ class DRQN(nn.Module):
         # batch_size X embedding - e.g. torch.tensor([ 32, 102 ])
         bs, embed = feed.size()
 
-        out = self._fc1(feed)
+        # first layer inference and relu activation
+        out = F.relu(self._fc1(feed), inplace=True)
 
         # reshape hidden state in case it does not match embedding dimension
         if hidden is not None:
             hidden = hidden.reshape(-1, self._rnn_hidden_dim)
 
+        # rnn feed forward
         updated_hidden = self._rnn(out, hidden)
+
+        # output layer q values computation
         q_vals = self._fc2(updated_hidden)
 
         return q_vals.view(bs, -1), updated_hidden.view(bs, -1)

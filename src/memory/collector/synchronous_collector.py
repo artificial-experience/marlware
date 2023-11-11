@@ -50,13 +50,11 @@ class SynchronousCollector:
     def _store_trajectory(self, feed: Dict[str, np.ndarray]) -> None:
         """store feed trajectory into replay memory"""
         # Check if any of the arrays in 'feed' are entirely zeros
-        has_zero_array = any(
-            np.all(value == 0)
-            for value in feed.values()
-            if isinstance(value, np.ndarray)
+        has_zero_prev_action = "prev_actions" in feed and np.all(
+            feed["prev_actions"] == 0
         )
 
-        if not has_zero_array:
+        if not has_zero_prev_action:
             # Extract data from 'feed' if no array is entirely zeros
             data = [
                 feed["observations"],
@@ -148,5 +146,6 @@ class SynchronousCollector:
 
     def sample_batch(self) -> Dict[str, np.ndarray]:
         """sample data from memory and form batch"""
+        # TODO: write new samping stratedy that returns adjacent episodes
         batch = self._memory.sample_buffer(mode=self._sampling_mode)
         return batch

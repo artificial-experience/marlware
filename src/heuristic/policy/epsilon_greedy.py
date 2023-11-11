@@ -1,7 +1,6 @@
 from functools import partialmethod
 
 import torch
-from torch.distributions import Categorical
 
 from src.heuristic.schedule import DecayThenFlatSchedule
 

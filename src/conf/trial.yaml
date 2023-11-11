@@ -20,7 +20,7 @@ defaults:
 
 rollout:
   train:
-    n_rollouts: 1_000
+    n_rollouts: 4_000
   test:
     eval_schedule: 200
     checkpoint_frequency: 200

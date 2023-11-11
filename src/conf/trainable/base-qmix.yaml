@@ -29,7 +29,7 @@ learner:
   exploration:
     epsilon_start: 1.0
     epsilon_min: 0.05
-    epsilon_anneal_steps: 5_000
+    epsilon_anneal_steps: 50_000
 
 # ------------------------------ #
 # ---- BUFFER CONFIGURATION ---- #
@@ -39,4 +39,4 @@ buffer:
   max_size: 5_000
   batch_size: 32
   prioritized: false
-  mode: "batch" # [ "uniform", "batch", "prioritized" ]
+  mode: "uniform" # [ "uniform", "batch", "prioritized" ]
