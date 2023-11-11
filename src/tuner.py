@@ -44,6 +44,15 @@ def tune(config_name: str, environ_prefix: str):
             environ_prefix, trainable_conf, accelerator, seed=seed
         )
 
+        n_rollouts = runtime.n_rollouts
+        eval_schedule = runtime.eval_schedule
+        checkpoint_freq = runtime.checkpoint_frequency
+        eval_n_games = runtime.n_games
+
+        score = trainable.optimize(
+            n_rollouts, eval_schedule, checkpoint_freq, eval_n_games
+        )
+
     hydra_main()
 
 

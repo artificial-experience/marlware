@@ -49,10 +49,10 @@ class DRQN(nn.Module):
     def forward(
         self,
         feed: torch.Tensor,
-        hidden_state: torch.Tensor = None,
+        hidden: torch.Tensor = None,
     ):
-        # batch_size X n_agents X embedding - [ 32, 8, 102 ]
-        bs, n_agents, embed = feed.size()
+        # batch_size X embedding - e.g. torch.tensor([ 32, 102 ])
+        bs, embed = feed.size()
 
         out = self._fc1(feed)
 
@@ -60,7 +60,7 @@ class DRQN(nn.Module):
         if hidden is not None:
             hidden = hidden.reshape(-1, self._rnn_hidden_dim)
 
-        hidden = self._rnn(out, hidden_state)
-        q_vals = self._fc2(hidden)
+        updated_hidden = self._rnn(out, hidden)
+        q_vals = self._fc2(updated_hidden)
 
-        return q_vals.view(bs, n_agents, -1), hidden.view(bs, n_agents, -1)
+        return q_vals.view(bs, -1), updated_hidden.view(bs, -1)

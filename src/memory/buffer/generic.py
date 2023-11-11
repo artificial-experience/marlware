@@ -9,6 +9,8 @@ It's been modified to suit the specific requirements of the current project.
 Please review the source and the associated license for further details about the permissions,
 limitations, and conditions under the initial use of the code.
 """
+import random
+
 import numpy as np
 
 from .sampling import SumTree
@@ -24,6 +26,15 @@ class GenericReplayMemory:
 
         if prioritized:
             self.sum_tree = SumTree(max_size, batch_size)
+
+    def _rnd_seed(self, *, seed: int = None):
+        """set random generator seed"""
+        if seed:
+            np.random.seed(seed)
+            random.seed(seed)
+
+    def ensemble_replay_memory(self, *, seed: int = None) -> None:
+        self._rnd_seed(seed=seed)
 
     def store_transition(self, items):
         index = self.mem_cntr % self.mem_size
@@ -93,20 +104,20 @@ def initialize_memory(
         done_shape = [max_size, n_threads]
 
         if action_space == "continuous":
-            action_space = [max_size, n_threads, n_actions]
+            action_space = [max_size, n_threads, n_actions, 1]
             a_dtype = np.float32
         elif action_space == "discrete":
-            action_shape = [max_size, n_threads]
+            action_shape = [max_size, n_threads, 1]
             a_dtype = np.int64
     else:
         observation_shape = [max_size, n_agents, *obs_shape]
         reward_shape = max_size
         done_shape = max_size
         if action_space == "continuous":
-            action_shape = [max_size, n_agents, n_actions]
+            action_shape = [max_size, n_agents, n_actions, 1]
             a_dtype = np.float32
         elif action_space == "discrete":
-            action_shape = [max_size, n_agents]
+            action_shape = [max_size, n_agents, 1]
             a_dtype = np.int64
 
     fields = fields or [

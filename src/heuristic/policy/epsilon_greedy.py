@@ -17,29 +17,41 @@ class EpsilonGreedy:
         self.test_noise = test_noise
 
     def decide_actions(self, agent_inputs, avail_actions, timestep, test_mode=False):
-        # Update epsilon according to the schedule or set to test noise level if in test mode
         self.epsilon = (
             self.schedule.eval(timestep) if not test_mode else self.test_noise
         )
 
-        # Mask actions that are excluded from selection
+        n_agents, bs, n_q_values = agent_inputs.size()
+
+        # Clone and mask unavailable actions in Q-values
         masked_q_values = agent_inputs.clone()
         masked_q_values[avail_actions == 0] = -float("inf")
 
-        # Generate a tensor of random numbers for each agent
-        random_numbers = torch.rand(agent_inputs.shape[0])
-        pick_random = (random_numbers < self.epsilon).long()
+        # Initialize tensor to store chosen actions
+        chosen_actions = torch.empty(n_agents, dtype=torch.long)
 
-        # Sample random actions for each agent
-        random_actions = Categorical(avail_actions.float()).sample()
+        # Decide actions for each agent
+        for agent_idx in range(n_agents):
+            if (
+                torch.rand(1).item() < self.epsilon
+            ):  # Exploration: Choose a random action
+                available_actions = (
+                    avail_actions[agent_idx].squeeze().nonzero(as_tuple=True)[0]
+                )
+                if len(available_actions) > 0:
+                    chosen_actions[agent_idx] = available_actions[
+                        torch.randint(0, len(available_actions), (1,))
+                    ]
+                else:
+                    chosen_actions[agent_idx] = torch.tensor(
+                        -1
+                    )  # Handle case with no available actions
+            else:  # Exploitation: Choose the best action
+                chosen_actions[agent_idx] = (
+                    masked_q_values[agent_idx].squeeze().max(0)[1]
+                )
 
-        # Find the actions with the maximum Q-value
-        best_actions = masked_q_values.max(dim=1)[1]
-
-        # Combine random and best actions depending on the value of pick_random
-        picked_actions = pick_random * random_actions + (1 - pick_random) * best_actions
-
-        return picked_actions
+        return chosen_actions
 
     # ---- ---- ---- ---- ---- #
     # --- Partial Methods ---- #

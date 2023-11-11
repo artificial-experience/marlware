@@ -1,10 +1,12 @@
 import copy
 import random
 from functools import partialmethod
+from typing import Dict
 from typing import List
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from omegaconf import OmegaConf
 
 from src.heuristic.policy import EpsilonGreedy
@@ -104,17 +106,56 @@ class MultiAgentCortex:
 
     def compute_actions(
         self,
-        feed: torch.Tensor,
-        avail_actions: torch.Tensor,
+        observations: np.ndarray,
+        prev_actions: np.ndarray,
+        avail_actions: np.ndarray,
         timestep: int,
         evaluate: bool = False,
-    ) -> torch.Tensor:
+    ) -> np.ndarray:
         """get feed and compute agents actions to take in the environment"""
-        pass
 
-    def estimate_q_vals(self, batch: torch.Tensor, use_target: bool = False):
+        # get num of agents and num of q-values
+        n_agents, n_q_values = avail_actions.shape
+
+        t_observations = torch.tensor(observations, dtype=torch.float32)
+        t_prev_actions = torch.tensor(prev_actions, dtype=torch.int64)
+        t_prev_actions_one_hot = F.one_hot(t_prev_actions, num_classes=n_q_values).view(
+            n_agents, n_q_values
+        )
+
+        # prepare fed for the agent
+        feed = {
+            "observations": t_observations,
+            "prev_actions": t_prev_actions_one_hot,
+        }
+
+        t_multi_agent_q_vals = self.estimate_eval_q_vals(feed)
+
+        # n_agents X batch_size X n_q_vals
+        t_avail_actions = torch.tensor(avail_actions, dtype=torch.float32).view(
+            n_agents, -1, n_q_values
+        )
+        decided_actions = self._policy.decide_actions_epsilon_greedily(
+            t_multi_agent_q_vals, t_avail_actions, timestep
+        )
+        return decided_actions
+
+    def estimate_q_vals(
+        self, feed: Dict[str, torch.Tensor], use_target: bool = False
+    ) -> torch.Tensor:
         """either use eval or target net to estimate q values"""
-        pass
+        multi_agent_q_vals = []
+        for agent in self._agents:
+            q_vals, hidden = (
+                agent.estimate_target_q(feed)
+                if use_target
+                else agent.estimate_eval_q(feed)
+            )
+            multi_agent_q_vals.append(q_vals)
+
+        # n_agents X batch_size X n_q_vals
+        t_multi_agent_q_vals = torch.stack(multi_agent_q_vals, dim=0)
+        return t_multi_agent_q_vals
 
     def synchronize_target_net(self, tau: float = 1.0):
         """Copy weights from eval net to target net using tau temperature.
@@ -145,5 +186,5 @@ class MultiAgentCortex:
     compute_eps_greedy_actions = partialmethod(compute_actions, evaluate=False)
     compute_greedy_actions = partialmethod(compute_actions, evaluate=True)
 
-    estaimte_eval_q_vals = partialmethod(estimate_q_vals, use_target=False)
-    estaimte_target_q_vals = partialmethod(estimate_q_vals, use_target=True)
+    estimate_eval_q_vals = partialmethod(estimate_q_vals, use_target=False)
+    estimate_target_q_vals = partialmethod(estimate_q_vals, use_target=True)

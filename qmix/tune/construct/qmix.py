@@ -419,6 +419,7 @@ class QMIXSharedParamsConstruct(BaseConstruct):
 
     def _execute_actions(self, actions):
         """step the environment given action from all N agents"""
+        print(actions)
         reward, terminated, _ = self._environment.step(actions)
         return reward, terminated
 

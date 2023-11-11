@@ -1,6 +1,7 @@
 import copy
 import random
 from functools import partialmethod
+from typing import Dict
 
 import numpy as np
 import torch
@@ -106,7 +107,7 @@ class BaseQMIX(BaseConstruct):
         self._eval_mixer.cuda()
         self._target_mixer.cuda()
 
-    def calculate_loss(self, batch: torch.Tensor) -> torch.Tensor:
+    def calculate_loss(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         """use partial methods to calcualte criterion loss between eval and target"""
         pass
 

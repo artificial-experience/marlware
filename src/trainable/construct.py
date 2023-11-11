@@ -1,4 +1,5 @@
 import random
+from typing import Dict
 from typing import Tuple
 
 import numpy as np
@@ -9,6 +10,7 @@ from src.cortex import MultiAgentCortex
 from src.environ.starcraft import SC2Environ
 from src.memory.buffer import GenericReplayMemory
 from src.memory.buffer import initialize_memory
+from src.memory.collector import SynchronousCollector
 from src.registry import global_registry
 from src.trainable import arch
 
@@ -87,20 +89,20 @@ class TrainableConstruct:
         return mac
 
     def _integrate_memory(
-        self, memory_conf: OmegaConf, env_info: dict
+        self, memory_conf: OmegaConf, env_info: dict, seed: int
     ) -> GenericReplayMemory:
         """create instance of replay memory based on environ info and memory conf"""
         state_shape = env_info.get("state_shape", None)
         obs_shape = env_info.get("obs_shape", None)
         n_actions = env_info.get("n_actions", None)
-        n_agents = env_info.get("n_actions", None)
+        n_agents = env_info.get("n_agents", None)
 
         max_size = memory_conf.max_size
         batch_size = memory_conf.batch_size
         prioritized = memory_conf.prioritized
 
         prev_actions_field = "prev_actions"
-        prev_actions_vals = np.zeros([max_size, n_agents], dtype=np.int64)
+        prev_actions_vals = np.zeros([max_size, n_agents, 1], dtype=np.int64)
 
         avail_actions_field = "avail_actions"
         avail_actions_vals = np.zeros([max_size, n_agents, n_actions], dtype=np.int64)
@@ -134,6 +136,7 @@ class TrainableConstruct:
             extra_fields=extra_fields,
             extra_vals=extra_vals,
         )
+        memory.ensemble_replay_memory(seed=seed)
         return memory
 
     def _integrate_environ(self, map_name: str) -> SC2Environ:
@@ -142,6 +145,17 @@ class TrainableConstruct:
         env, env_info = env_manager.create_env_instance()
         assert env is not None, "Environment cound not be created"
         return env, env_info
+
+    def _integrate_collector(
+        self,
+        conf: OmegaConf,
+        memory: GenericReplayMemory,
+        environ: SC2Environ,
+        env_info: dict,
+    ) -> SynchronousCollector:
+        collector = SynchronousCollector(conf)
+        collector.ensemble_collector(memory, environ, env_info)
+        return collector
 
     def _rnd_seed(self, *, seed: int = None):
         """set random seed"""
@@ -178,7 +192,7 @@ class TrainableConstruct:
         # ---- ---- ---- ---- ---- #
 
         memory_conf = self._conf.buffer
-        self._memory = self._integrate_memory(memory_conf, self._environ_info)
+        self._memory = self._integrate_memory(memory_conf, self._environ_info, seed)
 
         # ---- ---- ---- ---- ---- #
         # --- Integrate Cortex --- #
@@ -227,26 +241,38 @@ class TrainableConstruct:
         # --- Setup Collector ---- #
         # ---- ---- ---- ---- ---- #
 
-    def _collect_trajectories(
-        self, agent_actions: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """communicate with cortex to collect trajectories and store them in replay memory
-
-        takes batch of agent actions in order to step environ
-        returns feed and available actions as torch tensors
-        """
-        pass
+        collector_conf = self._conf.buffer
+        self._trajectory_collector = self._integrate_collector(
+            collector_conf, self._memory, self._environ, self._environ_info
+        )
 
     def _evaluate(self, n_games: int = 10) -> np.ndarray:
         """evaluate construct on N games"""
         pass
 
-    def optimize(self, n_rollouts: int = 100) -> np.ndarray:
+    def optimize(
+        self,
+        n_rollouts: int,
+        eval_schedule: int,
+        checkpoint_freq: int,
+        eval_n_games: int,
+    ) -> np.ndarray:
         """optimize construct within N rollouts"""
-        self._optimzer.zero_grad()
+
+        for rollout in range(n_rollouts):
+            # use multi agent cortex to collect rollouts
+            self._trajectory_collector.roll_environ_and_collect_trajectory(
+                mac=self._mac
+            )
+
+            if self._trajectory_collector.memory_ready():
+                batch = self._trajectory_collector.sample_batch()
+
+        # self._optimzer.zero_grad()
         # loss.backward()
         # grad_norm = torch.nn.utils.clip_grad_norm(self._params, self._grad_clip)
         # self._optimizer.step()
+        return 0
 
     def save_models(self) -> bool:
         """save all models"""
