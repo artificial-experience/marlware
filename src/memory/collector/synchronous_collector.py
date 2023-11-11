@@ -2,7 +2,6 @@ from typing import Dict
 from typing import Tuple
 
 import numpy as np
-import torch
 from omegaconf import OmegaConf
 
 from src.cortex import MultiAgentCortex
@@ -76,10 +75,12 @@ class SynchronousCollector:
             pass
 
     def _execute_actions(
-        self, actions: torch.Tensor, avail_actions: np.ndarray
+        self, actions: np.ndarray, avail_actions: np.ndarray
     ) -> Tuple[float, bool]:
         """execute actions on env and step env"""
         avail_actions_idx = [np.nonzero(row)[0] for row in avail_actions]
+
+        # ensure [n_agents,] shape of np array
         actions = actions.squeeze(1)
         actions_ok = all(
             [actions[i].item() in avail_actions_idx[i] for i in range(len(actions))]
@@ -92,7 +93,6 @@ class SynchronousCollector:
         """communicate with cortex to collect trajectories and store them in replay memory"""
         self._environ.reset()
         n_agents = self._environ_info.get("n_agents", 0)
-        n_actions = self._environ_info.get("n_actions", 0)
         obs_size = self._environ_info.get("obs_size", 0)
         state_size = self._environ_info.get("state_size", 0)
 
@@ -121,7 +121,7 @@ class SynchronousCollector:
             actions: np.ndarray = mac.compute_eps_greedy_actions(
                 observations, prev_actions, avail_actions, self._timesteps
             )
-            actions = actions.unsqueeze(1)
+            actions = np.expand_dims(actions, axis=1)
             reward, terminated = self._execute_actions(actions, avail_actions)
 
             next_observations = np.array(self._environ.get_obs(), dtype=np.float32)
@@ -146,7 +146,7 @@ class SynchronousCollector:
         """check if replay buffer is ready to be sampled"""
         return self._memory.ready()
 
-    def sample_batch(self) -> Dict[str, torch.Tensor]:
+    def sample_batch(self) -> Dict[str, np.ndarray]:
         """sample data from memory and form batch"""
         batch = self._memory.sample_buffer(mode=self._sampling_mode)
         return batch

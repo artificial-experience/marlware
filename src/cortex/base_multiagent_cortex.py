@@ -138,7 +138,7 @@ class MultiAgentCortex:
         decided_actions = self._policy.decide_actions_epsilon_greedily(
             t_multi_agent_q_vals, t_avail_actions, timestep
         )
-        return decided_actions
+        return decided_actions.detach().numpy()
 
     def estimate_q_vals(
         self, feed: Dict[str, torch.Tensor], use_target: bool = False
