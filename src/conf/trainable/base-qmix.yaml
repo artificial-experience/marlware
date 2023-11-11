@@ -1,0 +1,42 @@
+# --------------------------------- #
+# ---- TRAINABLE CONFIGURATION ---- #
+# --------------------------------- #
+
+trainable:
+  # construct class to be used for optimization
+  construct:
+    impl: BaseQMIX
+  hypernetwork:
+    model:
+      embedding_dim: 64
+      n_layers: 2 # [ 1, 2 ]
+  mixer:
+    model:
+      embedding_dim: 32
+
+# ------------------------------- #
+# ---- LEARNER CONFIGURATION ---- #
+# ------------------------------- #
+
+learner:
+  training:
+    lr: 5e-5
+    gamma: 0.99
+    grad_clip: 10.0
+    target_net_update_shedule: 200
+  model:
+    rnn_hidden_dim: 64
+  exploration:
+    epsilon_start: 1.0
+    epsilon_min: 0.05
+    epsilon_anneal_steps: 50_000
+
+# ------------------------------ #
+# ---- BUFFER CONFIGURATION ---- #
+# ------------------------------ #
+
+buffer:
+  max_size: 5_000
+  batch_size: 32
+  prioritized: false
+  mode: "uniform" # [ "uniform", "batch", "prioritized" ]
