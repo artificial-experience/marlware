@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "marl-engineering"
-version = "0.1.0"
+version = "1.0.0"
 description = ""
 authors = ["Sithael <james@marl.engineering>"]
 license = "MIT license"
