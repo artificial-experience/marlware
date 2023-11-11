@@ -129,6 +129,7 @@ class TrainableConstruct:
             next_states_field,
             avail_actions_field,
             next_avail_actions_field,
+
         )
         extra_vals = (
             prev_actions_vals,
@@ -321,6 +322,7 @@ class TrainableConstruct:
             next_states,
             avail_actions,
             next_avail_actions,
+
         ) = batch
 
         # Convert each numpy array in the batch to a torch tensor and move it to the specified device
@@ -347,6 +349,7 @@ class TrainableConstruct:
             self._accelerator
         )
 
+
         # Return the tensors as a list
         return [
             observations,
@@ -359,6 +362,7 @@ class TrainableConstruct:
             next_states,
             avail_actions,
             next_avail_actions,
+
         ]
 
     def optimize(
@@ -383,6 +387,7 @@ class TrainableConstruct:
 
             # if memory ready optimize network
             if self._trajectory_collector.memory_ready():
+
                 batch = self._trajectory_collector.sample_batch()
                 t_batch = self._move_batch_to_tensors(batch)
                 # unpack batch
