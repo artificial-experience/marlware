@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "marl-ripped-qmix"
+name = "marl-engineering"
 version = "0.1.0"
 description = ""
-authors = ["Sithael <chojnacki.jamie@gmail.com>"]
+authors = ["Sithael <james@marl.engineering>"]
 license = "MIT license"
 readme = "README.md"
-packages = [{include = "qmix"}]
+packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
