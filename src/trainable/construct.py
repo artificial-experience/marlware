@@ -1,9 +1,11 @@
 import random
 from typing import Dict
+from typing import Optional
 from typing import Tuple
 
 import numpy as np
 import torch
+import torchviz
 from omegaconf import OmegaConf
 
 from src.cortex import MultiAgentCortex
@@ -170,7 +172,7 @@ class TrainableConstruct:
         collector.ensemble_collector(memory, environ, env_info)
         return collector
 
-    def _rnd_seed(self, *, seed: int = None):
+    def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random seed"""
         if seed:
             torch.manual_seed(seed)
@@ -180,7 +182,7 @@ class TrainableConstruct:
             random.seed(seed)
 
     def commit(
-        self, environ_prefix: str, accelerator: str, *, seed: int = None
+        self, environ_prefix: str, accelerator: str, *, seed: Optional[int] = None
     ) -> None:
         """based on conf delegate construct object with given parameters"""
         self._rnd_seed(seed=seed)
@@ -456,6 +458,10 @@ class TrainableConstruct:
             self._trajectory_collector.roll_environ_and_collect_trajectory(
                 mac=self._mac
             )
+
+    def draw_computational_graph(self, data_shape: tuple) -> None:
+        """draw computational graph using torchviz"""
+        pass
 
     def save_models(self) -> bool:
         """save all models"""

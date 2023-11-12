@@ -2,6 +2,7 @@ import copy
 import random
 from functools import partialmethod
 from typing import Dict
+from typing import Optional
 
 import numpy as np
 import torch
@@ -40,7 +41,7 @@ class BaseQMIX(BaseConstruct):
         self._criterion = None
         self._gamma = None
 
-    def _rnd_seed(self, *, seed: int = None):
+    def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random generator seed"""
         if seed:
             torch.manual_seed(seed)
@@ -56,7 +57,7 @@ class BaseQMIX(BaseConstruct):
         state_dim: int,
         gamma: float,
         *,
-        seed: int = None
+        seed: Optional[int] = None
     ) -> None:
         self._rnd_seed(seed=seed)
 

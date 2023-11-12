@@ -1,4 +1,5 @@
 import random
+from typing import Optional
 
 import numpy as np
 import torch
@@ -37,7 +38,7 @@ class QMixer(nn.Module):
         self._n_agents = None
         self._state_dim = None
 
-    def _rnd_seed(self, *, seed: int = None):
+    def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random generator seed"""
         if seed:
             torch.manual_seed(seed)
@@ -46,7 +47,9 @@ class QMixer(nn.Module):
             np.random.seed(seed)
             random.seed(seed)
 
-    def integrate_network(self, n_agents: int, state_dim: int, *, seed: int = None):
+    def integrate_network(
+        self, n_agents: int, state_dim: int, *, seed: Optional[int] = None
+    ):
         """given number of agents the method will construct each agent and return itself"""
         self._rnd_seed(seed=seed)
 

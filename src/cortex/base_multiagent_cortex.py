@@ -3,6 +3,7 @@ import random
 from functools import partialmethod
 from typing import Dict
 from typing import List
+from typing import Optional
 
 import numpy as np
 import torch
@@ -42,7 +43,7 @@ class MultiAgentCortex:
         self._eval_drqn_network = None
         self._target_drqn_network = None
 
-    def _rnd_seed(self, *, seed: int = None):
+    def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random generator seed"""
         if seed:
             torch.manual_seed(seed)
@@ -59,7 +60,12 @@ class MultiAgentCortex:
         return agents
 
     def ensemble_cortex(
-        self, n_agents: int, n_actions: int, obs_shape: tuple, *, seed: int = None
+        self,
+        n_agents: int,
+        n_actions: int,
+        obs_shape: tuple,
+        *,
+        seed: Optional[int] = None
     ) -> None:
         """create heuristic, networks and ensemble N learners"""
         self._rnd_seed(seed=seed)

@@ -10,6 +10,7 @@ Please review the source and the associated license for further details about th
 limitations, and conditions under the initial use of the code.
 """
 import random
+from typing import Optional
 
 import numpy as np
 
@@ -27,13 +28,13 @@ class GenericReplayMemory:
         if prioritized:
             self.sum_tree = SumTree(max_size, batch_size)
 
-    def _rnd_seed(self, *, seed: int = None):
+    def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random generator seed"""
         if seed:
             np.random.seed(seed)
             random.seed(seed)
 
-    def ensemble_replay_memory(self, *, seed: int = None) -> None:
+    def ensemble_replay_memory(self, *, seed: Optional[int] = None) -> None:
         self._rnd_seed(seed=seed)
 
     def store_transition(self, items):
