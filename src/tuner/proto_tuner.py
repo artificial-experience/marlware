@@ -8,19 +8,20 @@ import torch
 import torchviz
 from omegaconf import OmegaConf
 
+from src import trainable
 from src.cortex import MultiAgentCortex
 from src.environ.starcraft import SC2Environ
 from src.memory.buffer import GenericReplayMemory
 from src.memory.buffer import initialize_memory
 from src.memory.collector import SynchronousCollector
 from src.registry import global_registry
-from src.trainable import arch
 
 
-class TrainableConstruct:
+class ProtoTuner:
     """
     Abstraction class meant to delegate certain construct for optimization
     Based on conf and registry the construct is instantiated
+    Prototype for other tuner classes
 
     Args:
         :param [conf]: construct configuration OmegaConf
@@ -42,7 +43,7 @@ class TrainableConstruct:
         self._conf = conf
 
         # internal attrs
-        self._trainable: arch.TrainableComponent = None
+        self._trainable: trainable.TrainableComponent = None
         self._mac = None
         self._memory = None
         self._environ = None
@@ -60,7 +61,7 @@ class TrainableConstruct:
 
     def _integrate_trainable(
         self, construct: str, env_info: dict, gamma: float, seed: int
-    ) -> arch.TrainableComponent:
+    ) -> trainable.TrainableComponent:
         """check for registered constructs and integrate chosen one"""
         registered_constructs = global_registry.get_registered()
         is_registered = construct in registered_constructs
@@ -131,7 +132,6 @@ class TrainableConstruct:
             next_states_field,
             avail_actions_field,
             next_avail_actions_field,
-
         )
         extra_vals = (
             prev_actions_vals,
@@ -199,7 +199,7 @@ class TrainableConstruct:
 
         gamma = self._conf.learner.training.gamma
         construct: str = self._conf.trainable.construct.impl
-        self._trainable: arch.TrainableComponent = self._integrate_trainable(
+        self._trainable: trainable.TrainableComponent = self._integrate_trainable(
             construct, self._environ_info, gamma, seed
         )
 
@@ -324,7 +324,6 @@ class TrainableConstruct:
             next_states,
             avail_actions,
             next_avail_actions,
-
         ) = batch
 
         # Convert each numpy array in the batch to a torch tensor and move it to the specified device
@@ -351,7 +350,6 @@ class TrainableConstruct:
             self._accelerator
         )
 
-
         # Return the tensors as a list
         return [
             observations,
@@ -364,7 +362,6 @@ class TrainableConstruct:
             next_states,
             avail_actions,
             next_avail_actions,
-
         ]
 
     def optimize(
@@ -389,7 +386,6 @@ class TrainableConstruct:
 
             # if memory ready optimize network
             if self._trajectory_collector.memory_ready():
-
                 batch = self._trajectory_collector.sample_batch()
                 t_batch = self._move_batch_to_tensors(batch)
                 # unpack batch
@@ -459,7 +455,7 @@ class TrainableConstruct:
                 mac=self._mac
             )
 
-    def draw_computational_graph(self, data_shape: tuple) -> None:
+    def draw_computational_graph(self) -> None:
         """draw computational graph using torchviz"""
         pass
 

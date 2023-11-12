@@ -67,7 +67,6 @@ class SynchronousCollector:
                 feed["next_states"],
                 feed["avail_actions"],
                 feed["next_avail_actions"],
-
             ]
             self._memory.store_transition(data)
         else:
@@ -112,7 +111,6 @@ class SynchronousCollector:
             "next_states": None,
             "avail_actions": None,
             "next_avail_actions": None,
-
         }
 
         while not terminated:
@@ -132,12 +130,6 @@ class SynchronousCollector:
             next_observations = np.array(self._environ.get_obs(), dtype=np.float32)
             next_states = np.array(self._environ.get_state(), dtype=np.float32)
             next_avail_actions = self._get_avail_actions(n_agents)
-
-            reward, terminated = self._execute_actions(actions, avail_actions)
-
-            next_observations = np.array(self._environ.get_obs(), dtype=np.float32)
-            next_states = np.array(self._environ.get_state(), dtype=np.float32)
-
 
             feed["observations"] = observations
             feed["actions"] = actions
