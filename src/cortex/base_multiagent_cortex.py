@@ -127,9 +127,11 @@ class MultiAgentCortex:
         t_observations = torch.tensor(observations, dtype=torch.float32).view(
             bs, n_agents, -1
         )
-        t_prev_actions = torch.tensor(prev_actions, dtype=torch.int64).view(
-            bs, n_agents, -1
-        )
+
+        prev_actions = prev_actions.reshape(-1, 1)
+
+        t_prev_actions = torch.tensor(prev_actions, dtype=torch.int64)
+        t_prev_actions = t_prev_actions.clone().detach().view(bs, n_agents, -1)
 
         # prepare fed for the agent
         feed = {

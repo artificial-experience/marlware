@@ -1,6 +1,5 @@
 from typing import Tuple
 
-import click
 import hydra
 from node import deserialize_configuration_node
 from omegaconf import DictConfig
@@ -24,33 +23,23 @@ def access_trial_directives(configuration: OmegaConf) -> Tuple[OmegaConf, OmegaC
     return runtime, device
 
 
-@click.command()
-@click.option("--config_name", default="trial", help="Name of the Hydra config file.")
-@click.option(
-    "--environ_prefix", default="8m", help="Name of the sc2 environ config file."
-)
-def tune(config_name: str, environ_prefix: str):
-    """accept input parameters"""
+@hydra.main(version_base=None, config_path="conf", config_name="trial")
+def runner(cfg: DictConfig) -> None:
+    """execute trial"""
+    trainable_conf, trial_conf = deserialize_configuration_node(cfg)
+    runtime, device = access_trial_directives(trial_conf)
 
-    @hydra.main(version_base=None, config_path="conf", config_name=config_name)
-    def runner(cfg: DictConfig) -> None:
-        """execute trial"""
-        trainable_conf, trial_conf = deserialize_configuration_node(cfg)
-        runtime, device = access_trial_directives(trial_conf)
+    accelerator = device.get("accelerator", "cpu")
+    seed = device.get("seed", None)
+    tuner = delegate_tuner("3m", trainable_conf, accelerator, seed=seed)
 
-        accelerator = device.get("accelerator", "cpu")
-        seed = device.get("seed", None)
-        tuner = delegate_tuner(environ_prefix, trainable_conf, accelerator, seed=seed)
+    n_rollouts = runtime.n_rollouts
+    eval_schedule = runtime.eval_schedule
+    checkpoint_freq = runtime.checkpoint_frequency
+    eval_n_games = runtime.n_games
 
-        n_rollouts = runtime.n_rollouts
-        eval_schedule = runtime.eval_schedule
-        checkpoint_freq = runtime.checkpoint_frequency
-        eval_n_games = runtime.n_games
-
-        score = tuner.optimize(n_rollouts, eval_schedule, checkpoint_freq, eval_n_games)
-
-    runner()
+    score = tuner.optimize(n_rollouts, eval_schedule, checkpoint_freq, eval_n_games)
 
 
 if __name__ == "__main__":
-    tune()
+    runner()

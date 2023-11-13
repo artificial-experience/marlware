@@ -158,6 +158,10 @@ class BaseQMIX(ProtoTrainable):
             target_max_q_values, next_states
         )
 
+        bs, n_agents, n_q_vals = target_factorized_values.shape
+        rewards = rewards.view(bs, n_agents, n_q_vals)
+        terminated = terminated.view(bs, n_agents, n_q_vals)
+
         td_targets = rewards + self._gamma * (1 - terminated) * target_factorized_values
 
         # detach target from computation graph

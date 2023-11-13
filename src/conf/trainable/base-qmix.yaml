@@ -37,6 +37,6 @@ learner:
 
 buffer:
   max_size: 5_000
-  batch_size: 32
+  batch_size: 64
   prioritized: false
   mode: "uniform" # [ "uniform", "batch", "prioritized" ]

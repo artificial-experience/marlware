@@ -11,9 +11,9 @@ from omegaconf import OmegaConf
 from src import trainable
 from src.cortex import MultiAgentCortex
 from src.environ.starcraft import SC2Environ
-from src.memory.buffer import GenericReplayMemory
-from src.memory.buffer import initialize_memory
-from src.memory.collector import SynchronousCollector
+from src.memory.harvester import SynchronousCollector
+from src.memory.replay import GenericReplayMemory
+from src.memory.replay import initialize_memory
 from src.registry import trainable_global_registry
 
 
@@ -287,14 +287,15 @@ class ProtoTuner:
         results = []
         for _ in range(n_games):
             self._environ.reset()
+            n_agents = self._environ_info.get("n_agents", None)
             terminated = False
             episode_return = 0
-            prev_actions = torch.zeros((8, 1))
+            prev_actions = np.zeros((n_agents, 1))
 
             while not terminated:
                 observations = np.array(self._environ.get_obs(), dtype=np.float32)
                 states = np.array(self._environ.get_state(), dtype=np.float32)
-                avail_actions = self._get_avail_actions(8)
+                avail_actions = self._get_avail_actions(n_agents)
 
                 actions: np.ndarray = self._mac.compute_greedy_actions(
                     observations, prev_actions, avail_actions, 0
@@ -374,7 +375,8 @@ class ProtoTuner:
         """optimize trainable within N rollouts"""
 
         for rollout in range(n_rollouts):
-            print(f"rollout: {rollout} % {n_rollouts}")
+            if rollout % 400 == 0:
+                print(f"rollout: {rollout} % {n_rollouts}")
 
             # synchronize target nets with online updates
             if rollout % self._target_net_update_sched == 0:

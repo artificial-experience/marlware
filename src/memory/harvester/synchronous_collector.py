@@ -6,7 +6,7 @@ from omegaconf import OmegaConf
 
 from src.cortex import MultiAgentCortex
 from src.environ.starcraft import SC2Environ
-from src.memory.buffer import GenericReplayMemory
+from src.memory.replay import GenericReplayMemory
 
 
 class SynchronousCollector:
