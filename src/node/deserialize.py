@@ -65,7 +65,7 @@ def fill_trainable_config(conf: DictConfig) -> OmegaConf:
     return structured_conf
 
 
-def serialize_configuration_node(
+def deserialize_configuration_node(
     cfg: DictConfig,
 ) -> Tuple[container.TrainableConfig, container.TrialConfig]:
     """Serialize a DictConfig node to a YAML string."""

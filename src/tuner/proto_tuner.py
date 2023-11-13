@@ -14,17 +14,17 @@ from src.environ.starcraft import SC2Environ
 from src.memory.buffer import GenericReplayMemory
 from src.memory.buffer import initialize_memory
 from src.memory.collector import SynchronousCollector
-from src.registry import global_registry
+from src.registry import trainable_global_registry
 
 
 class ProtoTuner:
     """
-    Abstraction class meant to delegate certain construct for optimization
-    Based on conf and registry the construct is instantiated
+    Abstraction class meant to delegate certain trainable for optimization
+    Based on conf and registry the trainable is instantiated
     Prototype for other tuner classes
 
     Args:
-        :param [conf]: construct configuration OmegaConf
+        :param [conf]: trainable configuration OmegaConf
 
     Internal State:
         :param [trainable]: chosen trainable component to be used (e.g. BaseQMIX)
@@ -43,7 +43,7 @@ class ProtoTuner:
         self._conf = conf
 
         # internal attrs
-        self._trainable: trainable.TrainableComponent = None
+        self._trainable: trainable.Trainable = None
         self._mac = None
         self._memory = None
         self._environ = None
@@ -60,23 +60,23 @@ class ProtoTuner:
         self._trajectory_collector = None
 
     def _integrate_trainable(
-        self, construct: str, env_info: dict, gamma: float, seed: int
-    ) -> trainable.TrainableComponent:
-        """check for registered constructs and integrate chosen one"""
-        registered_constructs = global_registry.get_registered()
-        is_registered = construct in registered_constructs
-        assert is_registered is True, f"Construct {construct} is not registered"
+        self, trainable: str, env_info: dict, gamma: float, seed: int
+    ) -> trainable.Trainable:
+        """check for registered trainable and integrate chosen one"""
+        registered_trainables = trainable_global_registry.get_registered()
+        is_registered = trainable in registered_trainables
+        assert is_registered is True, f"Trainable {trainable} is not registered"
 
-        construct_hypernet_conf = self._conf.trainable.hypernetwork
-        construct_mixer_conf = self._conf.trainable.mixer
+        trainable_hypernet_conf = self._conf.trainable.hypernetwork
+        trainable_mixer_conf = self._conf.trainable.mixer
 
-        trainable = global_registry.get(construct)(
-            construct_hypernet_conf, construct_mixer_conf
+        trainable = trainable_global_registry.get(trainable)(
+            trainable_hypernet_conf, trainable_mixer_conf
         )
         n_agents = env_info.get("n_agents", None)
         obs_dim = env_info.get("obs_shape", None)
         state_dim = env_info.get("state_shape", None)
-        trainable.ensemble_construct(
+        trainable.ensemble_trainable(
             n_agents=n_agents,
             observation_dim=obs_dim,
             state_dim=state_dim,
@@ -184,7 +184,7 @@ class ProtoTuner:
     def commit(
         self, environ_prefix: str, accelerator: str, *, seed: Optional[int] = None
     ) -> None:
-        """based on conf delegate construct object with given parameters"""
+        """based on conf delegate tuner object with given parameters"""
         self._rnd_seed(seed=seed)
 
         # ---- ---- ---- ---- ---- #
@@ -194,13 +194,13 @@ class ProtoTuner:
         self._environ, self._environ_info = self._integrate_environ(environ_prefix)
 
         # ---- ---- ---- ---- ---- #
-        # -- Integrate Construct - #
+        # -- Integrate Trainable - #
         # ---- ---- ---- ---- ---- #
 
         gamma = self._conf.learner.training.gamma
-        construct: str = self._conf.trainable.construct.impl
-        self._trainable: trainable.TrainableComponent = self._integrate_trainable(
-            construct, self._environ_info, gamma, seed
+        trainable: str = self._conf.trainable.construct.impl
+        self._trainable: trainable.Trainable = self._integrate_trainable(
+            trainable, self._environ_info, gamma, seed
         )
 
         # ---- ---- ---- ---- ---- #
@@ -225,8 +225,8 @@ class ProtoTuner:
         # ---- ---- ---- ---- ---- #
 
         # eval mixer params
-        construct_params = list(self._trainable.parameters())
-        self._params.extend(construct_params)
+        trainable_params = list(self._trainable.parameters())
+        self._params.extend(trainable_params)
         # eval drqn params
         cortex_params = list(self._mac.parameters())
         self._params.extend(cortex_params)
@@ -269,7 +269,7 @@ class ProtoTuner:
         self._accelerator = accelerator
 
     def _synchronize_target_nets(self):
-        """synchronize target networks inside cortex and construct"""
+        """synchronize target networks inside cortex and trainable"""
         self._trainable.synchronize_target_net()
         self._mac.synchronize_target_net()
 
@@ -283,7 +283,7 @@ class ProtoTuner:
         return np.array(avail_actions, dtype=np.int64)
 
     def _evaluate(self, n_games: int = 40) -> np.ndarray:
-        """evaluate construct on N games"""
+        """evaluate trainable on N games"""
         results = []
         for _ in range(n_games):
             self._environ.reset()
@@ -371,7 +371,7 @@ class ProtoTuner:
         checkpoint_freq: int,
         eval_n_games: int,
     ) -> np.ndarray:
-        """optimize construct within N rollouts"""
+        """optimize trainable within N rollouts"""
 
         for rollout in range(n_rollouts):
             print(f"rollout: {rollout} % {n_rollouts}")
@@ -423,7 +423,7 @@ class ProtoTuner:
                     feed=target_net_feed
                 )
 
-                construct_feed = {
+                trainable_feed = {
                     "prev_actions": prev_actions,
                     "actions": actions,
                     "states": states,
@@ -434,15 +434,15 @@ class ProtoTuner:
                     "dones": dones,
                 }
 
-                construct_loss = self._trainable.calculate_loss(
-                    feed=construct_feed,
+                trainable_loss = self._trainable.calculate_loss(
+                    feed=trainable_feed,
                     eval_q_vals=eval_net_q_estimates,
                     target_q_vals=target_net_q_estimates,
                 )
 
                 self._optimizer.zero_grad()
 
-                construct_loss.backward()
+                trainable_loss.backward()
 
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self._params, self._grad_clip

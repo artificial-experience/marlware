@@ -4,9 +4,9 @@ from abc import abstractmethod
 import torch
 
 
-class BaseConstruct(ABC):
+class ProtoTrainable(ABC):
     @abstractmethod
-    def ensemble_construct(
+    def ensemble_trainable(
         self, n_agents: int, n_actions: int, observation_dim: tuple, state_dim: tuple
     ) -> None:
         pass

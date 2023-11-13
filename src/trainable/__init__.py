@@ -1,7 +1,7 @@
 from typing import TypeVar
 
-from src.abstract import BaseConstruct
+from src.abstract import ProtoTrainable
 
-TrainableComponent = TypeVar("TrainableComponent", bound=BaseConstruct)
+Trainable = TypeVar("Trainable", bound=ProtoTrainable)
 
 from .base_qmix import BaseQMIX

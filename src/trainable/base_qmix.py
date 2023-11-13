@@ -8,13 +8,13 @@ import numpy as np
 import torch
 from omegaconf import OmegaConf
 
-from src.abstract import BaseConstruct
+from src.abstract import ProtoTrainable
 from src.net import QMixer
-from src.registry import register_construct
+from src.registry import register_trainable
 
 
-@register_construct
-class BaseQMIX(BaseConstruct):
+@register_trainable
+class BaseQMIX(ProtoTrainable):
     """
     Base implementation of QMIX: Monotonic Value Function Factorisation
     for Deep Multi-Agent Reinforcement Learning
@@ -50,7 +50,7 @@ class BaseQMIX(BaseConstruct):
             np.random.seed(seed)
             random.seed(seed)
 
-    def ensemble_construct(
+    def ensemble_trainable(
         self,
         n_agents: int,
         observation_dim: int,

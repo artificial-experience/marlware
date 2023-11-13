@@ -1,4 +1,7 @@
-class ConstructRegistry:
+from src.abstract import ProtoTrainable
+
+
+class TrainableRegistry:
     _instance = None
 
     def __new__(cls):
@@ -26,9 +29,10 @@ class ConstructRegistry:
 
 
 # Singleton instance of the registry that will be used by the decorator
-global_registry = ConstructRegistry()
+trainable_global_registry = TrainableRegistry()
 
 
-def register_construct(cls):
-    global_registry.register(cls)
+def register_trainable(cls):
+    if issubclass(cls, ProtoTrainable):
+        trainable_global_registry.register(cls)
     return cls

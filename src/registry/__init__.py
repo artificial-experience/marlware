@@ -1,2 +1,2 @@
-from .construct import global_registry
-from .construct import register_construct
+from .trainable import register_trainable
+from .trainable import trainable_global_registry

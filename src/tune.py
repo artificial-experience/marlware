@@ -2,7 +2,7 @@ from typing import Tuple
 
 import click
 import hydra
-from node import serialize_configuration_node
+from node import deserialize_configuration_node
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
 from tuner import ProtoTuner
@@ -35,7 +35,7 @@ def tune(config_name: str, environ_prefix: str):
     @hydra.main(version_base=None, config_path="conf", config_name=config_name)
     def runner(cfg: DictConfig) -> None:
         """execute trial"""
-        trainable_conf, trial_conf = serialize_configuration_node(cfg)
+        trainable_conf, trial_conf = deserialize_configuration_node(cfg)
         runtime, device = access_trial_directives(trial_conf)
 
         accelerator = device.get("accelerator", "cpu")

@@ -1,1 +1,1 @@
-from .base_construct import BaseConstruct
+from .trainable import ProtoTrainable

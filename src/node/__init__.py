@@ -1,1 +1,1 @@
-from .serialize import serialize_configuration_node
+from .deserialize import deserialize_configuration_node
