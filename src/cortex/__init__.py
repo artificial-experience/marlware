@@ -1,1 +1,1 @@
-from .base_multiagent_cortex import MultiAgentCortex
+from .multiagent_cortex import MultiAgentCortex

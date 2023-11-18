@@ -1,4 +1,5 @@
 import random
+from typing import Optional
 
 import numpy as np
 import torch
@@ -9,7 +10,7 @@ import torch.nn.functional as F
 class DRQN(nn.Module):
     """
     Deep recurrent Q-network implementation with GRUCell
-    Network's forward method operates on obesrvation and previous action
+    Network's forward method operates on obesrvation and previous action which is a part of observation vector
     Network will return approximated q-values and updated cell state and hidden state
 
     Args:
@@ -21,7 +22,7 @@ class DRQN(nn.Module):
         super().__init__()
         self._rnn_hidden_dim = rnn_hidden_dim
 
-    def _rnd_seed(self, *, seed: int = None):
+    def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random generator seed"""
         if seed:
             torch.manual_seed(seed)
@@ -30,7 +31,9 @@ class DRQN(nn.Module):
             np.random.seed(seed)
             random.seed(seed)
 
-    def integrate_network(self, input_dim: int, n_q_values: int, *, seed: int = None):
+    def integrate_network(
+        self, input_dim: int, n_q_values: int, *, seed: Optional[int] = None
+    ):
         """given input dimension construct network"""
         self._rnd_seed(seed=seed)
 

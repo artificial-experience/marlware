@@ -23,3 +23,16 @@ Marl-Engineering is ideal for tackling complex cooperative tasks that require co
 ## Join the Journey
 
 As Marl-Engineering continues to grow, I plan to integrate cutting-edge technologies and methodologies to enhance its capabilities further. I invite collaborators, researchers, and enthusiasts to join me in this exciting journey of discovery and innovation in the world of Multi-Agent Reinforcement Learning.
+
+## Citation
+
+If you use this repository in your research, please cite it using the following BibTeX entry:
+
+```bibtex
+@misc{chojancki2023marl-engineering,
+  title={marl-engineering},
+  author={Chojancki, James},
+  year={2023},
+  publisher={GitHub},
+  howpublished={\url{https://github.com/Sithael/marl-engineering}}
+}
