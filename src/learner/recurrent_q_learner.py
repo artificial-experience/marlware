@@ -42,14 +42,9 @@ class RecurrentQLearner:
     ) -> torch.Tensor:
         """estimate q value given feed tensor"""
         observations = feed.get("observations", None)
-        prev_actions = feed.get("actions", None)
         avail_actions = feed.get("avail_actions", None)
 
         bs, n_agents, n_q_values = avail_actions.shape
-
-        prev_actions_one_hot = F.one_hot(prev_actions, num_classes=n_q_values).view(
-            bs, n_agents, n_q_values
-        )
 
         agent_identifier_one_hot = self.one_hot_identifier.view(1, -1)
         agent_identifier_one_hot = agent_identifier_one_hot.repeat(bs, 1)
@@ -57,10 +52,9 @@ class RecurrentQLearner:
 
         # get current agent's observations slices
         agent_observations = observations[:, serialized_identifier, :]
-        agent_prev_actions = prev_actions_one_hot[:, serialized_identifier, :]
 
         prepared_feed = torch.cat(
-            [agent_observations, agent_prev_actions, agent_identifier_one_hot], dim=-1
+            [agent_observations, agent_identifier_one_hot], dim=-1
         )
         prepared_feed = prepared_feed.view(bs, -1)
 

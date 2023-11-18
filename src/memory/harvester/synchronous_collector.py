@@ -49,29 +49,18 @@ class SynchronousCollector:
 
     def _store_trajectory(self, feed: Dict[str, np.ndarray]) -> None:
         """store feed trajectory into replay memory"""
-        # Check if any of the arrays in 'feed' are entirely zeros
-        has_zero_prev_action = "prev_actions" in feed and np.all(
-            feed["prev_actions"] == 0
-        )
-
-        if not has_zero_prev_action:
-            # Extract data from 'feed' if no array is entirely zeros
-            data = [
-                feed["observations"],
-                feed["actions"],
-                feed["reward"],
-                feed["next_observations"],
-                feed["terminated"],
-                feed["prev_actions"],
-                feed["states"],
-                feed["next_states"],
-                feed["avail_actions"],
-                feed["next_avail_actions"],
-            ]
-            self._memory.store_transition(data)
-        else:
-            # Handle the case where there is an array completely filled with zeros
-            pass
+        data = [
+            feed["observations"],
+            feed["actions"],
+            feed["reward"],
+            feed["next_observations"],
+            feed["terminated"],
+            feed["states"],
+            feed["next_states"],
+            feed["avail_actions"],
+            feed["next_avail_actions"],
+        ]
+        self._memory.store_transition(data)
 
     def _execute_actions(
         self, actions: np.ndarray, avail_actions: np.ndarray
@@ -96,7 +85,6 @@ class SynchronousCollector:
         state_size = self._environ_info.get("state_size", 0)
 
         terminated = False
-        prev_actions = np.zeros((n_agents, 1))
         next_observations = np.zeros((n_agents, obs_size))
         next_states = np.zeros((n_agents, state_size))
 
@@ -106,7 +94,6 @@ class SynchronousCollector:
             "reward": None,
             "next_observations": None,
             "terminated": terminated,
-            "prev_actions": prev_actions,
             "states": None,
             "next_states": None,
             "avail_actions": None,
@@ -119,8 +106,9 @@ class SynchronousCollector:
             avail_actions = self._get_avail_actions(n_agents)
 
             actions: np.ndarray = mac.compute_eps_greedy_actions(
-                observations, prev_actions, avail_actions, self._timesteps
+                observations, avail_actions, self._timesteps
             )
+
             actions = np.expand_dims(actions, axis=1)
 
             reward, terminated, info = self._execute_actions(actions, avail_actions)
@@ -136,7 +124,6 @@ class SynchronousCollector:
             feed["reward"] = reward
             feed["next_observations"] = next_observations
             feed["terminated"] = done
-            feed["prev_actions"] = prev_actions
             feed["states"] = states
             feed["next_states"] = next_states
             feed["avail_actions"] = avail_actions
@@ -144,7 +131,6 @@ class SynchronousCollector:
 
             self._store_trajectory(feed)
 
-            prev_actions = actions
             self._timesteps += 1
 
     def memory_ready(self) -> bool:

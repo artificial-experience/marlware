@@ -10,7 +10,7 @@ import torch.nn.functional as F
 class DRQN(nn.Module):
     """
     Deep recurrent Q-network implementation with GRUCell
-    Network's forward method operates on obesrvation and previous action
+    Network's forward method operates on obesrvation and previous action which is a part of observation vector
     Network will return approximated q-values and updated cell state and hidden state
 
     Args:

@@ -4,4 +4,4 @@ from src.abstract import ProtoTrainable
 
 Trainable = TypeVar("Trainable", bound=ProtoTrainable)
 
-from .base_qmix import BaseQMIX
+from .qmix_core import QmixCore
