@@ -59,6 +59,13 @@ def ensemble_learners(n_agents: int, impl: torch.nn.Module, conf: OmegaConf):
     return learners
 
 
+def convert_agent_actions_to_one_hot(
+    actions: np.ndarray, n_actions: int
+) -> torch.Tensor:
+    """convert agents actions into one-hot representation"""
+    return F.one_hot(actions, num_classes=n_actions).to(torch.int64)
+
+
 def get_current_timestamp(use_hour=True):
     """self explanatory method"""
     if use_hour:

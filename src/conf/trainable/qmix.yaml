@@ -23,20 +23,20 @@ learner:
     lr: 5e-4
     gamma: 0.99
     grad_clip: 10.0
-    target_net_update_shedule: 200
+    target_net_update_shedule: 4
   model:
     rnn_hidden_dim: 64
   exploration:
     epsilon_start: 1.0
     epsilon_min: 0.05
-    epsilon_anneal_steps: 100_000
+    epsilon_anneal_steps: 500_000
 
 # ------------------------------ #
 # ---- BUFFER CONFIGURATION ---- #
 # ------------------------------ #
 
 buffer:
-  max_size: 400_000
-  batch_size: 256
+  max_size: 1_000_000
+  batch_size: 1024
   prioritized: false
   mode: "uniform" # [ "uniform", "batch", "prioritized" ]

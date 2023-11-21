@@ -5,6 +5,8 @@ import torch
 from omegaconf import OmegaConf
 from torch.nn import functional as F
 
+from src.util import methods
+
 
 class RecurrentQLearner:
     """
@@ -43,8 +45,14 @@ class RecurrentQLearner:
         """estimate q value given feed tensor"""
         observations = feed.get("observations", None)
         avail_actions = feed.get("avail_actions", None)
+        actions = feed.get("actions", None)
 
         bs, n_agents, n_q_values = avail_actions.shape
+
+        # prepare agent actions
+        one_hot_actions = methods.convert_agent_actions_to_one_hot(
+            actions, n_q_values
+        ).view(bs, n_agents, -1)
 
         agent_identifier_one_hot = self.one_hot_identifier.view(1, -1)
         agent_identifier_one_hot = agent_identifier_one_hot.repeat(bs, 1)
@@ -52,9 +60,11 @@ class RecurrentQLearner:
 
         # get current agent's observations slices
         agent_observations = observations[:, serialized_identifier, :]
+        agent_one_hot_actions = one_hot_actions[:, serialized_identifier, :]
 
         prepared_feed = torch.cat(
-            [agent_observations, agent_identifier_one_hot], dim=-1
+            [agent_observations, agent_identifier_one_hot, agent_one_hot_actions],
+            dim=-1,
         )
         prepared_feed = prepared_feed.view(bs, -1)
 

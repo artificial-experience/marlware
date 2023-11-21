@@ -1,5 +1,8 @@
+import random
 from functools import partialmethod
+from typing import Optional
 
+import numpy as np
 import torch
 
 from src.heuristic.schedule import DecayThenFlatSchedule
@@ -14,6 +17,19 @@ class EpsilonGreedy:
         )
         self.epsilon = self.schedule.eval(0)
         self.test_noise = test_noise
+
+    def _rnd_seed(self, *, seed: Optional[int] = None):
+        """set random generator seed"""
+        if seed:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+
+    def ensemble_policy(self, *, seed: Optional[int] = None):
+        """create policy and assign seed"""
+        self._rnd_seed(seed=seed)
 
     def decide_actions(self, agent_inputs, avail_actions, timestep, test_mode=False):
         self.epsilon = (

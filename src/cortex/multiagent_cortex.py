@@ -79,6 +79,7 @@ class MultiAgentCortex:
         eps_anneal_time = self._exp_conf.epsilon_anneal_steps
 
         self._policy = EpsilonGreedy(eps_start, eps_min, eps_anneal_time)
+        self._policy.ensemble_policy(seed=seed)
 
         # ---- ---- ---- ---- ---- ---- #
         # ---- Prepare Networks --- --- #
@@ -87,8 +88,8 @@ class MultiAgentCortex:
         rnn_hidden_dim = self._model_conf.rnn_hidden_dim
         self._eval_drqn_network = DRQN(rnn_hidden_dim)
 
-        # dim = agent one hot id + obs shape
-        input_dim = n_agents + obs_shape
+        # dim = agent one hot id + obs shape + prev action one hot
+        input_dim = n_agents + obs_shape + n_actions
         # the same number of q_values as actions
         n_q_values = n_actions
         self._eval_drqn_network.integrate_network(input_dim, n_q_values, seed=seed)
@@ -110,26 +111,35 @@ class MultiAgentCortex:
                 eval_net=self._eval_drqn_network, target_net=self._target_drqn_network
             )
 
+    # TODO: Refactor this method
     def compute_actions(
         self,
         observations: np.ndarray,
         avail_actions: np.ndarray,
+        prev_actions: np.ndarray,
         timestep: int,
         evaluate: bool = False,
     ) -> np.ndarray:
         """get feed and compute agents actions to take in the environment"""
-        # get num of agents and num of q-values
+
+        # TODO: This is shit
         avail_actions = np.expand_dims(avail_actions, axis=0)
+
+        # TODO: This is shit
         bs, n_agents, n_q_values = avail_actions.shape
 
+        # TODO: This is shit
         t_observations = torch.tensor(observations, dtype=torch.float32).view(
             bs, n_agents, -1
         )
+
+        t_prev_actions = torch.tensor(prev_actions, dtype=torch.int64)
 
         # prepare fed for the agent
         feed = {
             "observations": t_observations,
             "avail_actions": avail_actions,
+            "actions": t_prev_actions,
         }
 
         t_multi_agent_q_vals = self.estimate_eval_q_vals(feed)

@@ -126,17 +126,22 @@ class CoreTuner:
             [max_size, n_agents, n_actions], dtype=np.int64
         )
 
+        prev_actions_field = "prev_actions"
+        prev_actions_vals = np.zeros([max_size, n_agents, 1], dtype=np.int64)
+
         extra_fields = (
             states_field,
             next_states_field,
             avail_actions_field,
             next_avail_actions_field,
+            prev_actions_field,
         )
         extra_vals = (
             states_vals,
             next_states_vals,
             avail_actions_vals,
             next_avail_actions_vals,
+            prev_actions_vals,
         )
 
         memory = initialize_memory(
@@ -291,6 +296,7 @@ class CoreTuner:
 
         return np.array(avail_actions, dtype=np.int64)
 
+    # TODO: Refactor this mehods - move to sepaarate class
     def _evaluate(self, n_games: int = 40) -> np.ndarray:
         """evaluate trainable on N games"""
         results = []
@@ -299,6 +305,7 @@ class CoreTuner:
             n_agents = self._environ_info.get("n_agents", None)
             terminated = False
             episode_return = 0
+            prev_actions = np.zeros((n_agents, 1))
 
             while not terminated:
                 observations = np.array(self._environ.get_obs(), dtype=np.float32)
@@ -306,17 +313,19 @@ class CoreTuner:
                 avail_actions = self._get_avail_actions(n_agents)
 
                 actions: np.ndarray = self._mac.compute_greedy_actions(
-                    observations, avail_actions, 0
+                    observations, avail_actions, prev_actions, 0
                 )
 
                 reward, terminated, _ = self._environ.step(actions)
 
+                prev_actions = actions
                 episode_return += reward
 
             results.append(episode_return)
 
         return results
 
+    # TODO: Refactor this code
     def _move_batch_to_tensors(self, batch: list) -> list:
         """Move numpy arrays to torch tensors"""
         (
@@ -329,13 +338,16 @@ class CoreTuner:
             next_states,
             avail_actions,
             next_avail_actions,
+            prev_actions,
         ) = batch
 
         # Convert each numpy array in the batch to a torch tensor and move it to the specified device
         observations = torch.tensor(observations, dtype=torch.float32).to(
             self._accelerator
         )
+
         actions = torch.tensor(actions, dtype=torch.int64).to(self._accelerator)
+
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self._accelerator)
         next_observations = torch.tensor(next_observations, dtype=torch.float32).to(
             self._accelerator
@@ -351,6 +363,9 @@ class CoreTuner:
         next_avail_actions = torch.tensor(next_avail_actions, dtype=torch.int64).to(
             self._accelerator
         )
+        prev_actions = torch.tensor(prev_actions, dtype=torch.int64).to(
+            self._accelerator
+        )
 
         # Return the tensors as a list
         return [
@@ -363,6 +378,7 @@ class CoreTuner:
             next_states,
             avail_actions,
             next_avail_actions,
+            prev_actions,
         ]
 
     def _log_eval_score_statistics(
@@ -411,7 +427,7 @@ class CoreTuner:
                 self._synchronize_target_nets()
 
             # evaluate performance on n_games
-            if rollout % eval_schedule == 0:
+            if rollout % eval_schedule == 100:
                 eval_results = self._evaluate(eval_n_games)
                 evaluation_scores.append(eval_results)
 
@@ -437,17 +453,20 @@ class CoreTuner:
                     next_states,
                     avail_actions,
                     next_avail_actions,
+                    prev_actions,
                 ) = t_batch
 
                 # prepare feed for networks
                 eval_net_feed = {
                     "observations": observations,
                     "avail_actions": avail_actions,
+                    "actions": prev_actions,
                 }
 
                 target_net_feed = {
                     "observations": next_observations,
                     "avail_actions": avail_actions,
+                    "actions": actions,
                 }
 
                 # n_agents X batch_size X n_q_values
