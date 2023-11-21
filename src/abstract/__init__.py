@@ -1,0 +1,1 @@
+from .trainable import ProtoTrainable

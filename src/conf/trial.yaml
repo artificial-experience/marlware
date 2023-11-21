@@ -1,0 +1,38 @@
+# ----------------------------- #
+# ---- HYDRA CONFIGURATION ---- #
+# ----------------------------- #
+
+hydra:
+  run:
+    dir: ../outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+# -------------------------------- #
+# ---- DEFAULTS CONFIGURATION ---- #
+# -------------------------------- #
+
+defaults:
+  - _self_
+  - trainable: qmix
+  # - environ: sc2
+
+  - override hydra/job_logging: custom
+
+# ----------------------------- #
+# ---- TRIAL CONFIGURATION ---- #
+# ----------------------------- #
+
+rollout:
+  train:
+    n_rollouts: 90_000
+  test:
+    eval_schedule: 500
+    checkpoint_frequency: 200
+    n_games: 40
+
+# ------------------------------ #
+# ---- DEVICE CONFIGURATION ---- #
+# ------------------------------ #
+
+device:
+  accelerator: "cpu"
+  seed: 91
