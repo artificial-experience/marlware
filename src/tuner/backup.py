@@ -13,9 +13,9 @@ from omegaconf import OmegaConf
 from src import trainable
 from src.cortex import MultiAgentCortex
 from src.environ.starcraft import SC2Environ
+from src.memory.harvester import SynchronousCollector
 from src.memory.replay import GenericReplayMemory
 from src.memory.replay import initialize_memory
-from src.memory.worker import SynchronousCollector
 from src.registry import trainable_global_registry
 
 
@@ -103,10 +103,66 @@ class CoreTuner:
         self, memory_conf: OmegaConf, env_info: dict, seed: int
     ) -> GenericReplayMemory:
         """create instance of replay memory based on environ info and memory conf"""
+        state_shape = env_info.get("state_shape", None)
+        obs_shape = env_info.get("obs_shape", None)
+        n_actions = env_info.get("n_actions", None)
+        n_agents = env_info.get("n_agents", None)
 
-        # HERE HERE HERE HERE
+        max_size = memory_conf.max_size
+        batch_size = memory_conf.batch_size
+        prioritized = memory_conf.prioritized
 
+        avail_actions_field = "avail_actions"
+        avail_actions_vals = np.zeros([max_size, n_agents, n_actions], dtype=np.int64)
+
+        states_field = "states"
+        states_vals = np.zeros([max_size, state_shape], dtype=np.float32)
+
+        next_states_field = "next_states"
+        next_states_vals = np.zeros([max_size, state_shape], dtype=np.float32)
+
+        next_avail_actions_field = "next_avail_actions"
+        next_avail_actions_vals = np.zeros(
+            [max_size, n_agents, n_actions], dtype=np.int64
+        )
+
+        prev_actions_field = "prev_actions"
+        prev_actions_vals = np.zeros([max_size, n_agents, 1], dtype=np.int64)
+
+        extra_fields = (
+            states_field,
+            next_states_field,
+            avail_actions_field,
+            next_avail_actions_field,
+            prev_actions_field,
+        )
+        extra_vals = (
+            states_vals,
+            next_states_vals,
+            avail_actions_vals,
+            next_avail_actions_vals,
+            prev_actions_vals,
+        )
+
+        memory = initialize_memory(
+            obs_shape=(obs_shape,),
+            n_actions=n_actions,
+            n_agents=n_agents,
+            max_size=max_size,
+            batch_size=batch_size,
+            prioritized=prioritized,
+            extra_fields=extra_fields,
+            extra_vals=extra_vals,
+        )
+        memory.ensemble_replay_memory(seed=seed)
         return memory
+
+    def _integrate_environ(self, map_name: str) -> SC2Environ:
+        """based on map_name create sc2 environ instance"""
+        env_manager = SC2Environ(map_name)
+        env, env_info = env_manager.create_env_instance()
+        assert env is not None, "Environment cound not be created"
+        return env, env_info
 
     def _integrate_collector(
         self,
@@ -118,13 +174,6 @@ class CoreTuner:
         collector = SynchronousCollector(conf)
         collector.ensemble_collector(memory, environ, env_info)
         return collector
-
-    def _integrate_environ(self, map_name: str) -> SC2Environ:
-        """based on map_name create sc2 environ instance"""
-        env_manager = SC2Environ(map_name)
-        env, env_info = env_manager.create_env_instance()
-        assert env is not None, "Environment cound not be created"
-        return env, env_info
 
     def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random seed"""

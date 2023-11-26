@@ -1,6 +1,6 @@
 DIR=$(realpath $(dirname "${BASH_SOURCE[0]}"))
-MARLROOT=$DIR
-export MARLROOT
+ROOT=$DIR
+export ROOT
 
 poetry lock
 poetry install

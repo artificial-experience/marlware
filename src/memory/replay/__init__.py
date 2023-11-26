@@ -1,2 +1,1 @@
-from .generic import GenericReplayMemory
-from .generic import initialize_memory
+from .generic import GenericEpisodeReplay
