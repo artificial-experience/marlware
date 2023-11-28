@@ -1,1 +1,2 @@
-from .synchronous_collector import SynchronousCollector
+# TODO: refactor later
+from .episodic_worker import EpisodeRunner

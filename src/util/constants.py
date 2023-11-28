@@ -21,13 +21,13 @@ class _EnvKey(Enum):
     _BATTLE_WON = "battle_won"
 
 
-class _MemoryKey(Enum):
-    """configuraiton attribute keys for memory replay"""
+class _DataKey(Enum):
+    """configuraiton attribute keys for data replay"""
 
     _SCHEME = "scheme"
-    _GROUP = "groups"
+    _GROUP = "group"
     _VALUE_SHAPE = "vshape"
-    _DTYPE_KEY = "dtype"
+    _DTYPE = "dtype"
     _EP_CONST = "episode_const"
 
     # groups and transforms
@@ -36,12 +36,13 @@ class _MemoryKey(Enum):
 
     # episode store
     _STATE = "state"
-    _OBS = "observation"
+    _OBS = "obs"
     _ACTIONS = "actions"
     _AVAIL_ACTIONS = "avail_actions"
     _PROBS = "probs"
     _REWARD = "reward"
     _TERMINATED = "terminated"
+    _FILLED = "filled"
 
 
 class _CortexKey(Enum):
@@ -65,7 +66,7 @@ class AttrKey:
 
     # hold configuration keys for components
     env = _EnvKey
-    memory = _MemoryKey
+    data = _DataKey
     cortex = _CortexKey
     tuner = _TunerKey
     logger = _LoggerKey

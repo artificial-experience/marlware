@@ -1,3 +1,6 @@
+import torch
+
+
 class OneHotTransform:
     """
     takes input and transforms it into one hot encodding
@@ -15,4 +18,4 @@ class OneHotTransform:
         return y_onehot.float()
 
     def infer_output_info(self, vshape_in, dtype_in):
-        return (self.out_dim,), th.float32
+        return (self.out_dim,), torch.float32

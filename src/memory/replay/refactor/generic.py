@@ -57,7 +57,7 @@ class GenericEpisodeReplay:
         data: Optional[dict] = None,
         transforms: Optional[dict] = None,
         device: Optional[str] = "cpu",
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
     ) -> None:
         """fill data simple namespace with attributes needed for batch creation"""
         self._rnd_seed(seed=seed)
@@ -262,9 +262,7 @@ class GenericEpisodeReplay:
                 target = self._data.episode_data
                 _slices = slices[0]
             else:
-                raise KeyError(
-                    f"{attr} not found in transition not episode data"
-                )
+                raise KeyError(f"{attr} not found in transition not episode data")
 
             attr_dtype = self._scheme[attr].get("dtype", torch.float32)
             t_value = torch.tensor(value, dtype=attr_dtype, device=self._device)
