@@ -75,7 +75,7 @@ class QmixCore(ProtoTrainable):
         )
         self._eval_mixer.integrate_network(n_agents, state_dim, seed=seed)
 
-        # deepcopy eval network structure for frozen mixer networl
+        # deepcopy eval network structure for frozen mixer network
         self._target_mixer = copy.deepcopy(self._eval_mixer)
 
         # ---- ---- ---- ---- ---- ---- #
@@ -123,7 +123,7 @@ class QmixCore(ProtoTrainable):
         eval_q_vals: torch.Tensor,
         target_q_vals: torch.Tensor,
     ) -> torch.Tensor:
-        """use partial methods to calcualte criterion loss between eval and target"""
+        """use partial methods to calculate criterion loss between eval and target"""
 
         # ---- ---- ---- ---- ---- #
         # @ -> Get Data

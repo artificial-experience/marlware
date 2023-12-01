@@ -143,16 +143,15 @@ class MultiAgentCortex:
         t_multi_agent_q_vals = t_multi_agent_q_vals.detach()
 
         # n_agents X batch_size X n_q_vals
-        t_avail_actions = torch.tensor(avail_actions, dtype=torch.float32).view(
-            -1, n_agents, n_q_values
-        )
+        avail_actions = avail_actions.view(-1, n_agents, n_q_values)
+
         decided_actions = (
             self._policy.decide_actions_greedily(
-                t_multi_agent_q_vals, t_avail_actions, env_timestep
+                t_multi_agent_q_vals, avail_actions, env_timestep
             )
             if evaluate
             else self._policy.decide_actions_epsilon_greedily(
-                t_multi_agent_q_vals, t_avail_actions, env_timestep
+                t_multi_agent_q_vals, avail_actions, env_timestep
             )
         )
         return decided_actions.detach().numpy()

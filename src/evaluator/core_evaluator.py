@@ -1,5 +1,6 @@
 from functools import partial
 from logging import Logger
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -24,11 +25,15 @@ class CoreEvaluator:
         # horizon
         self._episode_limit = None
 
+        # results path
+        self._path = "./"
+
     def ensemble_evaluator(
         self, env: SC2Environ, env_info: dict, cortex: MultiAgentCortex, logger: Logger
     ) -> None:
         """instantiate internal states"""
         self._performance = []
+        self._best_score = -np.inf
 
         self._env = env
         self._env_info = env_info
@@ -37,7 +42,14 @@ class CoreEvaluator:
 
         self._episode_limit = self._env.episode_limit
 
-    def setup(self, scheme, groups, preprocess, device) -> None:
+    def setup(
+        self,
+        scheme: dict,
+        groups: dict,
+        preprocess: dict,
+        device: str,
+        path: Optional[Path] = None,
+    ) -> None:
         """setup new batch blueprint"""
         self.new_batch = partial(
             EpisodeBatch,
@@ -48,6 +60,8 @@ class CoreEvaluator:
             preprocess=preprocess,
             device=device,
         )
+
+        self._path = path
 
     def reset(self) -> None:
         """reset internal state and create new batch"""
@@ -113,4 +127,35 @@ class CoreEvaluator:
 
         mean_score = np.mean(evaluation_scores)
         self._performance.append(mean_score)
-        print(f"rollout: {rollout}, mean_score: {mean_score}")
+
+        self.log_eval_score_stats(mean_score, self._performance, rollout)
+
+    def log_eval_score_stats(
+        self, local_scores: list, global_scores: list, rollout: int
+    ) -> None:
+        """log evaluation metrics given scores"""
+        if not global_scores:
+            return
+
+        self._trace_logger.log_stat("eval_score_mean", local_scores, rollout)
+
+        # Calculate statistics
+        eval_running_mean = np.mean(global_scores)
+        eval_score_std = np.std(global_scores)
+
+        # Log running mean and standard deviation
+        self._trace_logger.log_stat(
+            "eval_score_running_mean", eval_running_mean, rollout
+        )
+        self._trace_logger.log_stat("eval_score_std", eval_score_std, rollout)
+
+        # Calculate and log the variation between the most recent two evaluations, if available
+        if len(global_scores) >= 2:
+            # Calculate the variation between the mean scores of the last two evaluations
+            recent_mean_scores = [np.mean(sublist) for sublist in global_scores[-2:]]
+            eval_score_var = np.abs(recent_mean_scores[-1] - recent_mean_scores[-2])
+            self._trace_logger.log_stat("eval_score_var", eval_score_var, rollout)
+
+    def record_replay(self) -> None:
+        """record evaluation replay"""
+        pass

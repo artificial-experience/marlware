@@ -33,6 +33,7 @@ ray = {extras = ["data", "rllib", "serve", "train", "tune"], version = "^2.8.0"}
 omegaconf = "^2.3.0"
 hydra-colorlog = "^1.2.0"
 scipy = "^1.11.3"
+wandb = "^0.16.0"
 
 [build-system]
 requires = ["poetry-core"]

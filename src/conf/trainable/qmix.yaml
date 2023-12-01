@@ -22,14 +22,14 @@ learner:
   training:
     lr: 5e-4
     gamma: 0.99
-    grad_clip: 10.0
-    target_net_update_shedule: 10
+    grad_clip: 1.0
+    target_net_update_shedule: 20
   model:
     rnn_hidden_dim: 64
   exploration:
     epsilon_start: 1.0
     epsilon_min: 0.05
-    epsilon_anneal_steps: 500_000
+    epsilon_anneal_steps: 100_000
 
 # ------------------------------ #
 # ---- BUFFER CONFIGURATION ---- #

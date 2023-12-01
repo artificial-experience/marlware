@@ -438,12 +438,15 @@ class CoreTuner:
                 )
                 self._optimizer.step()
 
+                self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
+                self._trace_logger.log_stat("gradient_norm", grad_norm, rollout)
+
             # ---- ---- ---- ---- ---- #
             # @ -> Log Stats
             # ---- ---- ---- ---- ---- #
 
             if rollout % display_freq == 0:
-                pass
+                self._trace_logger.display_recent_stats()
 
             # update episode counter ( works for synchronous training )
             rollout += 1
