@@ -4,6 +4,7 @@ from logging import Logger
 from typing import Tuple
 
 import hydra
+import wandb
 from logger import TraceLogger
 from node import deserialize_configuration_node
 from omegaconf import DictConfig
@@ -44,15 +45,25 @@ def get_logger() -> logging.Logger:
 
 
 def format_config_file(cfg: OmegaConf) -> str:
-    """Reformat to yaml for a nice display and add a message"""
+    """reformat to yaml for a nice display and add a message"""
     message = "Starting Trial with Hydra Configuration ...\n"
     formatted_config = OmegaConf.to_yaml(cfg, resolve=True)
     return message + formatted_config
 
 
+def start_wandb(cfg: DictConfig):
+    """create wandb instance"""
+    wandb.config = OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
+    run = wandb.init(entity=cfg.wandb.entity, project=cfg.wandb.project)
+    return run
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="trial")
 def runner(cfg: DictConfig) -> None:
     """execute trial"""
+    # TODO: add wandb support
+    # run = start_wandb(cfg)
+
     logger = get_logger()
     formatted_config = format_config_file(cfg)
     logger.info(formatted_config)
@@ -70,7 +81,7 @@ def runner(cfg: DictConfig) -> None:
     checkpoint_freq = runtime.checkpoint_frequency
     eval_n_games = runtime.n_games
 
-    score = tuner.optimize(n_rollouts, eval_schedule, checkpoint_freq, eval_n_games)
+    tuner.optimize(n_rollouts, eval_schedule, checkpoint_freq, eval_n_games)
 
 
 if __name__ == "__main__":

@@ -1,1 +1,0 @@
-from .synchronous_collector import SynchronousCollector

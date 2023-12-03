@@ -4,6 +4,7 @@ from typing import Tuple
 from smac.env import StarCraft2Env
 
 
+# TODO: Refactor this code - its shit
 class SC2Environ:
     """
     Abstraction layer for SC2 environment handler

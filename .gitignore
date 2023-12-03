@@ -167,3 +167,9 @@ outputs*
 
 # JetBrains stuff
 *.idea/
+
+# MACOS
+__MACOSX/*
+
+# SC2 files
+StarCraftII/
