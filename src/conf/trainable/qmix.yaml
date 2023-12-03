@@ -22,8 +22,8 @@ learner:
   training:
     lr: 5e-4
     gamma: 0.99
-    grad_clip: 1.0
-    target_net_update_shedule: 20
+    grad_clip: 10.0
+    target_net_update_shedule: 200
   model:
     rnn_hidden_dim: 64
   exploration:

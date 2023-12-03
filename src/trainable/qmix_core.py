@@ -179,7 +179,9 @@ class QmixCore(ProtoTrainable):
         # ---- ---- ---- ---- ---- #
 
         target = reward + self._gamma * (1 - terminated) * target_factorized_values
-        td_error = eval_factorized_values - target.detach()
+        target = target.detach()
+
+        td_error = eval_factorized_values - target
         mask = mask.expand_as(td_error)
 
         # 0-out the targets that came from padded data

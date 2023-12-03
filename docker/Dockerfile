@@ -3,18 +3,20 @@ FROM nvidia/cuda:12.3.0-runtime-ubuntu22.04
 LABEL maintainer="James Chojnacki"
 
 # Ubuntu Packages
-RUN apt-get update -y && apt-get install software-properties-common -y && \
+RUN apt-get update -y && \
+    apt-get install software-properties-common -y && \
     add-apt-repository -y multiverse && apt-get update -y && apt-get upgrade -y && \
-    apt-get install -y apt-utils nano vim man build-essential wget sudo && \
+    apt-get install -y apt-utils vim man build-essential wget sudo && \
     rm -rf /var/lib/apt/lists/*
 
 # Update package lists and install curl
-RUN apt-get update && \
+RUN apt-get update -y && \
     apt-get install -y swig && \
     apt-get install -y gcc && \
     apt-get install -y git && \
     apt-get install -y python3-dev && \
     apt-get install -y curl && \
+    apt-get install -y unzip && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
@@ -37,6 +39,8 @@ WORKDIR /marl
 # Use bash to source the script, ensuring that bash is installed and used for the command
 SHELL ["/bin/bash", "-c"]
 
-# Install project, ensuring that the script is executable
-# and using '.' which is equivalent to 'source' in bash.
-RUN chmod +x activate_env.sh && . ./activate_env.sh
+# Change mode for files
+RUN chmod +x activate_env.sh install_sc2.sh
+
+# Set Starcraft 2 variable
+ENV SC2PATH /marl/StarCraftII
