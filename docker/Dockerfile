@@ -42,5 +42,8 @@ SHELL ["/bin/bash", "-c"]
 # Change mode for files
 RUN chmod +x activate_env.sh install_sc2.sh
 
-# Set Starcraft 2 variable
-ENV SC2PATH /marl/StarCraftII
+# Install StarCraft II
+RUN ./install_sc2.sh
+
+# Set StarCraftII path
+ENV SC2PATH /marl/games/StarCraftII

@@ -1,32 +1,20 @@
-smac_maps=$(pwd)/smac_maps
+TARGET_DIR=$(pwd)/games
 
-cd "$HOME"
-export SC2PATH="$HOME/StarCraftII"
-echo 'SC2PATH is set to '$SC2PATH
+echo 'Installing StarCraft II in the working directory...'
 
-if [ ! -d $SC2PATH ]; then
-        echo 'StarCraftII is not installed. Installing now ...';
-        wget http://blzdistsc2-a.akamaihd.net/Linux/SC2.4.10.zip
-        unzip -P iagreetotheeula SC2.4.10.zip
-        rm -rf SC2.4.10.zip
+# Check if the StarCraftII directory exists
+if [ ! -d $TARGET_DIR ]; then
+    echo 'StarCraftII is not installed. Installing now...'
+    # Create the StarCraftII directory
+    mkdir -p $TARGET_DIR
+    # Download the StarCraftII package
+    wget http://blzdistsc2-a.akamaihd.net/Linux/SC2.4.10.zip
+    # Unzip the package into the StarCraftII directory
+    unzip -P iagreetotheeula SC2.4.10.zip -d $TARGET_DIR
+    # Remove the downloaded zip file to clean up
+    rm SC2.4.10.zip
 else
-        echo 'StarCraftII is already installed.'
+    echo 'StarCraftII is already installed.'
 fi
 
-echo 'Adding SMAC maps.'
-MAP_DIR="$SC2PATH/Maps/"
-echo 'MAP_DIR is set to '$MAP_DIR
-
-if [ ! -d $MAP_DIR ]; then
-        mkdir -p $MAP_DIR
-fi
-
-wget https://github.com/oxwhirl/smac/releases/download/v0.1-beta1/SMAC_Maps.zip
-unzip SMAC_Maps.zip
-
-cp -r $smac_maps/* ./SMAC_Maps
-mv SMAC_Maps $MAP_DIR
-rm -rf SMAC_Maps.zip
-
-
-echo 'StarCraft II and SMAC are installed.'
+echo 'StarCraft II is installed in: '$TARGET_DIR
