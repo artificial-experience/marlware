@@ -11,6 +11,7 @@ from omegaconf import OmegaConf
 from src.abstract import ProtoTrainable
 from src.net import QMixer
 from src.registry import register_trainable
+from src.util.constants import AttrKey
 
 
 @register_trainable
@@ -38,7 +39,6 @@ class QmixCore(ProtoTrainable):
         self._target_mixer = None
 
         # loss calculation
-        self._criterion = None
         self._gamma = None
 
     def _rnd_seed(self, *, seed: Optional[int] = None):
@@ -62,7 +62,7 @@ class QmixCore(ProtoTrainable):
         self._rnd_seed(seed=seed)
 
         # ---- ---- ---- ---- ---- ---- #
-        # ---  -- Prepare Mixers --- -- #
+        # @ -> Prepare Mixers
         # ---- ---- ---- ---- ---- ---- #
 
         hypernet_embed_dim = self._hypernet_conf.embedding_dim
@@ -75,14 +75,13 @@ class QmixCore(ProtoTrainable):
         )
         self._eval_mixer.integrate_network(n_agents, state_dim, seed=seed)
 
-        # deepcopy eval network structure for frozen mixer networl
+        # deepcopy eval network structure for frozen mixer network
         self._target_mixer = copy.deepcopy(self._eval_mixer)
 
         # ---- ---- ---- ---- ---- ---- #
-        # --- - Prepare Criterion -- -- #
+        # @ -> Prepare Hyperparams
         # ---- ---- ---- ---- ---- ---- #
 
-        self._criterion = torch.nn.MSELoss()
         self._gamma = gamma
 
     def factorize_q_vals(
@@ -124,52 +123,77 @@ class QmixCore(ProtoTrainable):
         eval_q_vals: torch.Tensor,
         target_q_vals: torch.Tensor,
     ) -> torch.Tensor:
-        """use partial methods to calcualte criterion loss between eval and target"""
-        actions = feed.get("actions", None)
-        states = feed.get("states", None)
-        next_states = feed.get("next_states", None)
-        next_avail_actions = feed.get("next_avail_actions", None)
-        rewards = feed.get("rewards", None)
-        terminated = feed.get("dones", None)
+        """use partial methods to calculate criterion loss between eval and target"""
 
-        # align shapes
-        next_avail_actions = next_avail_actions.permute(1, 0, 2)
+        # ---- ---- ---- ---- ---- #
+        # @ -> Get Data
+        # ---- ---- ---- ---- ---- #
 
-        # clone targets and mask
-        masked_target_q_vals = target_q_vals.clone()
-        masked_target_q_vals[next_avail_actions == 0] = -float("inf")
+        data_attr = AttrKey.data
 
-        # take maximum actions - Bellman opimality equation
-        target_max_q_values, max_indices = torch.max(
-            target_q_vals, dim=-1, keepdim=True
+        actions = feed[data_attr._ACTIONS.value]
+        state = feed[data_attr._STATE.value]
+        reward = feed[data_attr._REWARD.value]
+        terminated = feed[data_attr._TERMINATED.value]
+        avail_actions = feed[data_attr._AVAIL_ACTIONS.value]
+        mask = feed[data_attr._FILLED.value]
+
+        # ---- ---- ---- ---- ---- #
+        # @ -> Transform Data
+        # ---- ---- ---- ---- ---- #
+
+        actions = actions[:, :-1]
+        reward = reward[:, :-1]
+        terminated = terminated[:, :-1].float()
+        mask = mask[:, :-1].float()
+        mask[:, 1:] = mask[:, 1:] * (1 - terminated[:, :-1])
+        avail_actions = avail_actions[:, 1:]
+
+        eval_state = state[:, :-1]
+        target_state = state[:, 1:]
+
+        # ---- ---- ---- ---- ---- #
+        # @ -> Prepare Q-Vals
+        # ---- ---- ---- ---- ---- #
+
+        chosen_action_q_vals = torch.gather(eval_q_vals, dim=3, index=actions).squeeze(
+            3
         )
 
-        # reshape tensor1 to match the dimensions of tensor2 for gathering
-        actions_taken = actions.squeeze(-1).permute(1, 0)  # Reshape to [8, 32]
-        # use gather to select elements
-        eval_chosen_q_vals = torch.gather(
-            eval_q_vals, dim=2, index=actions_taken.unsqueeze(-1)
-        )
+        target_q_vals[avail_actions == 0] = -9999999
+        target_max_q_vals = target_q_vals.max(dim=3)[0]
 
-        eval_factorized_values = self.factorize_eval_q_vals(eval_chosen_q_vals, states)
+        # ---- ---- ---- ---- ---- #
+        # @ -> Factorize Q-Vals
+        # ---- ---- ---- ---- ---- #
+
+        eval_factorized_values = self.factorize_eval_q_vals(
+            chosen_action_q_vals, eval_state
+        )
         target_factorized_values = self.factorize_target_q_vals(
-            target_max_q_values, next_states
+            target_max_q_vals, target_state
         )
 
-        bs, n_agents, n_q_vals = target_factorized_values.shape
-        rewards = rewards.view(bs, n_agents, n_q_vals)
-        terminated = terminated.view(bs, n_agents, n_q_vals)
+        # ---- ---- ---- ---- ---- #
+        # @ -> Calculate TD Target
+        # ---- ---- ---- ---- ---- #
 
-        td_targets = rewards + self._gamma * (1 - terminated) * target_factorized_values
+        target = reward + self._gamma * (1 - terminated) * target_factorized_values
+        target = target.detach()
 
-        # detach target from computation graph
-        td_targets = td_targets.detach()
+        td_error = eval_factorized_values - target
+        mask = mask.expand_as(td_error)
 
-        loss = self._criterion(eval_factorized_values, td_targets)
+        # 0-out the targets that came from padded data
+        masked_td_error = td_error * mask
+
+        # L2 Loss over actual data
+        loss = 0.5 * (masked_td_error**2).sum() / mask.sum()
+
         return loss
 
     # ---- ---- ---- ---- ---- #
-    # --- Partial Methods ---- #
+    # @ -> Partial Methods
     # ---- ---- ---- ---- ---- #
 
     factorize_eval_q_vals = partialmethod(factorize_q_vals, use_target=False)

@@ -22,6 +22,9 @@ class DRQN(nn.Module):
         super().__init__()
         self._rnn_hidden_dim = rnn_hidden_dim
 
+        # internal state
+        self._hidden = None
+
     def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random generator seed"""
         if seed:
@@ -43,22 +46,22 @@ class DRQN(nn.Module):
 
     def init_hidden_state(self, batch_size: int) -> torch.Tensor:
         """return initial hidden state tensor filled with 0s that are on the same device as model"""
-        return self._fc1.weight.new(batch_size, self._rnn_hidden_dim).zero_()
+        self._hidden = self._fc1.weight.new(batch_size, self._rnn_hidden_dim).zero_()
 
     def forward(
         self,
         feed: torch.Tensor,
-        hidden: torch.Tensor = None,
     ):
         # batch_size X embedding - e.g. torch.tensor([ 32, 102 ])
         bs, embed = feed.size()
 
         # first layer inference and relu activation
-        out = F.relu(self._fc1(feed), inplace=True)
+        out = self._fc1(feed)
+        out = F.relu(out)
 
         # reshape hidden state in case it does not match embedding dimension
-        if hidden is not None:
-            hidden = hidden.reshape(-1, self._rnn_hidden_dim)
+        assert self._hidden is not None, "hidden state was not initialized"
+        hidden = self._hidden.reshape(-1, self._rnn_hidden_dim)
 
         # rnn feed forward
         updated_hidden = self._rnn(out, hidden)
@@ -66,4 +69,7 @@ class DRQN(nn.Module):
         # output layer q values computation
         q_vals = self._fc2(updated_hidden)
 
-        return q_vals.view(bs, -1), updated_hidden.view(bs, -1)
+        # update internal hidden state information
+        self._hidden = updated_hidden.view(bs, -1)
+
+        return q_vals.view(bs, -1)

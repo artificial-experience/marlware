@@ -20,10 +20,10 @@ trainable:
 
 learner:
   training:
-    lr: 5e-4
+    lr: 1e-3
     gamma: 0.99
     grad_clip: 10.0
-    target_net_update_shedule: 200
+    target_net_update_shedule: 25
   model:
     rnn_hidden_dim: 64
   exploration:
@@ -36,7 +36,7 @@ learner:
 # ------------------------------ #
 
 buffer:
-  max_size: 400_000
-  batch_size: 256
+  max_size: 1_000_000
+  batch_size: 5_000
   prioritized: false
   mode: "uniform" # [ "uniform", "batch", "prioritized" ]

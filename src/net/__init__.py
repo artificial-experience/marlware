@@ -1,2 +1,2 @@
 from .drqn import DRQN
-from .q_mixer import QMixer
+from .qmixer import QMixer

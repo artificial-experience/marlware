@@ -25,7 +25,7 @@ rollout:
   train:
     n_rollouts: 90_000
   test:
-    eval_schedule: 500
+    eval_schedule: 1_000
     checkpoint_frequency: 200
     n_games: 40
 
@@ -35,4 +35,4 @@ rollout:
 
 device:
   accelerator: "cpu"
-  seed: 91
+  seed: 94

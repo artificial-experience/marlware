@@ -1,22 +1,23 @@
 import random
+from itertools import chain
 from logging import Logger
-from typing import Dict
 from typing import List
 from typing import Optional
-from typing import Tuple
 
 import numpy as np
 import torch
-import torchviz
 from omegaconf import OmegaConf
+from torchviz import make_dot
 
 from src import trainable
 from src.cortex import MultiAgentCortex
 from src.environ.starcraft import SC2Environ
-from src.memory.harvester import SynchronousCollector
-from src.memory.replay import GenericReplayMemory
-from src.memory.replay import initialize_memory
+from src.evaluator import CoreEvaluator
+from src.memory.replay import ReplayBuffer
+from src.memory.worker import EpisodeRunner
 from src.registry import trainable_global_registry
+from src.transforms import OneHotTransform
+from src.util.constants import AttrKey
 
 
 class CoreTuner:
@@ -37,7 +38,7 @@ class CoreTuner:
         :param [optimizer]: optimizer used to backward pass grads through eval nets
         :param [params]: eval nets parameters
         :param [grad_clip]: gradient clip to prevent exploding gradients and divergence
-        :param [trajectory_collector]: collector used to gather trajectories from environ
+        :param [trajectory_worker]: worker used to gather trajectories from environ
 
     """
 
@@ -59,8 +60,11 @@ class CoreTuner:
         self._target_net_update_sched = 100
         self._accelerator = "cpu"
 
-        # trajectory collector
-        self._trajectory_collector = None
+        # trajectory worker
+        self._trajectory_worker = None
+
+        # evaluator
+        self._evaluator = None
 
     def _integrate_trainable(
         self, trainable: str, env_info: dict, gamma: float, seed: int
@@ -100,57 +104,37 @@ class CoreTuner:
         return mac
 
     def _integrate_memory(
-        self, memory_conf: OmegaConf, env_info: dict, seed: int
-    ) -> GenericReplayMemory:
+        self,
+        memory_conf: OmegaConf,
+        scheme: dict,
+        groups: dict,
+        max_seq_length: int,
+        preprocess: dict,
+        accelerator: str,
+        seed: int,
+    ) -> ReplayBuffer:
         """create instance of replay memory based on environ info and memory conf"""
-        state_shape = env_info.get("state_shape", None)
-        obs_shape = env_info.get("obs_shape", None)
-        n_actions = env_info.get("n_actions", None)
-        n_agents = env_info.get("n_agents", None)
-
-        max_size = memory_conf.max_size
-        batch_size = memory_conf.batch_size
-        prioritized = memory_conf.prioritized
-
-        avail_actions_field = "avail_actions"
-        avail_actions_vals = np.zeros([max_size, n_agents, n_actions], dtype=np.int64)
-
-        states_field = "states"
-        states_vals = np.zeros([max_size, state_shape], dtype=np.float32)
-
-        next_states_field = "next_states"
-        next_states_vals = np.zeros([max_size, state_shape], dtype=np.float32)
-
-        next_avail_actions_field = "next_avail_actions"
-        next_avail_actions_vals = np.zeros(
-            [max_size, n_agents, n_actions], dtype=np.int64
+        batch_size = memory_conf.get("batch_size", None)
+        memory = ReplayBuffer(
+            scheme=scheme,
+            groups=groups,
+            buffer_size=batch_size,
+            max_seq_length=max_seq_length + 1,
+            preprocess=preprocess,
+            device=accelerator,
         )
-
-        extra_fields = (
-            states_field,
-            next_states_field,
-            avail_actions_field,
-            next_avail_actions_field,
-        )
-        extra_vals = (
-            states_vals,
-            next_states_vals,
-            avail_actions_vals,
-            next_avail_actions_vals,
-        )
-
-        memory = initialize_memory(
-            obs_shape=(obs_shape,),
-            n_actions=n_actions,
-            n_agents=n_agents,
-            max_size=max_size,
-            batch_size=batch_size,
-            prioritized=prioritized,
-            extra_fields=extra_fields,
-            extra_vals=extra_vals,
-        )
-        memory.ensemble_replay_memory(seed=seed)
         return memory
+
+    def _integrate_worker(
+        self,
+        conf: OmegaConf,
+        logger: Logger,
+        env: SC2Environ,
+        env_info: dict,
+    ) -> EpisodeRunner:
+        """create worker instance to be used for interaction with env"""
+        worker = EpisodeRunner(conf, logger, env, env_info)
+        return worker
 
     def _integrate_environ(self, map_name: str) -> SC2Environ:
         """based on map_name create sc2 environ instance"""
@@ -159,16 +143,15 @@ class CoreTuner:
         assert env is not None, "Environment cound not be created"
         return env, env_info
 
-    def _integrate_collector(
-        self,
-        conf: OmegaConf,
-        memory: GenericReplayMemory,
-        environ: SC2Environ,
-        env_info: dict,
-    ) -> SynchronousCollector:
-        collector = SynchronousCollector(conf)
-        collector.ensemble_collector(memory, environ, env_info)
-        return collector
+    def _integrate_evaluator(
+        self, env: SC2Environ, env_info: dict, cortex: MultiAgentCortex, logger: Logger
+    ) -> CoreEvaluator:
+        """create evaluator instance"""
+        evaluator = CoreEvaluator()
+        evaluator.ensemble_evaluator(
+            env=env, env_info=env_info, cortex=cortex, logger=logger
+        )
+        return evaluator
 
     def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random seed"""
@@ -191,19 +174,25 @@ class CoreTuner:
         self._rnd_seed(seed=seed)
 
         # ---- ---- ---- ---- ---- #
-        # ---  - Setup Logger ---- #
+        # @ -> Setup Accelerator
+        # ---- ---- ---- ---- ---- #
+
+        self._accelerator = accelerator
+
+        # ---- ---- ---- ---- ---- #
+        # @ ->  - Setup Logger
         # ---- ---- ---- ---- ---- #
 
         self._trace_logger = logger
 
         # ---- ---- ---- ---- ---- #
-        # --- Integrate Environ -- #
+        # @ -> Integrate Environ
         # ---- ---- ---- ---- ---- #
 
         self._environ, self._environ_info = self._integrate_environ(environ_prefix)
 
         # ---- ---- ---- ---- ---- #
-        # -- Integrate Trainable - #
+        # @ -> Integrate Trainable
         # ---- ---- ---- ---- ---- #
 
         gamma = self._conf.learner.training.gamma
@@ -213,14 +202,7 @@ class CoreTuner:
         )
 
         # ---- ---- ---- ---- ---- #
-        # --- Integrate Memory --- #
-        # ---- ---- ---- ---- ---- #
-
-        memory_conf = self._conf.buffer
-        self._memory = self._integrate_memory(memory_conf, self._environ_info, seed)
-
-        # ---- ---- ---- ---- ---- #
-        # --- Integrate Cortex --- #
+        # @ -> Integrate Cortex
         # ---- ---- ---- ---- ---- #
 
         model_conf = self._conf.learner.model
@@ -230,31 +212,35 @@ class CoreTuner:
         )
 
         # ---- ---- ---- ---- ---- #
-        # --- Gather Params -- --- #
+        # @ -> Gather Params
         # ---- ---- ---- ---- ---- #
 
         # eval mixer params
         trainable_params = list(self._trainable.parameters())
         self._params.extend(trainable_params)
+
         # eval drqn params
         cortex_params = list(self._mac.parameters())
         self._params.extend(cortex_params)
 
         # ---- ---- ---- ---- ---- #
-        # --- Setup Optimizer  --- #
+        # @ -> Setup Optimizer
         # ---- ---- ---- ---- ---- #
 
         learning_rate = self._conf.learner.training.lr
-        self._optimizer = torch.optim.Adam(params=self._params, lr=learning_rate)
+        # TODO: move alpha and eps to config file
+        self._optimizer = torch.optim.RMSprop(
+            params=self._params, lr=learning_rate, alpha=0.99, eps=1e-5
+        )
 
         # ---- ---- ---- ---- ---- #
-        # --- Setup Grad Clip ---- #
+        # @ -> Setup Grad Clip
         # ---- ---- ---- ---- ---- #
 
         self._grad_clip = self._conf.learner.training.grad_clip
 
         # ---- ---- ---- ---- ---- #
-        # --- Setup Target Update  #
+        # @ -> Setup Target Update
         # ---- ---- ---- ---- ---- #
 
         target_network_update_schedule = (
@@ -263,136 +249,102 @@ class CoreTuner:
         self._target_net_update_sched = target_network_update_schedule
 
         # ---- ---- ---- ---- ---- #
-        # --- Setup Collector ---- #
+        # @ -> Prepare Blueprint
         # ---- ---- ---- ---- ---- #
 
-        collector_conf = self._conf.buffer
-        self._trajectory_collector = self._integrate_collector(
-            collector_conf, self._memory, self._environ, self._environ_info
+        data_attr = AttrKey.data
+        env_attr = AttrKey.env
+
+        state_shape = self._environ_info[env_attr._STATE_SHAPE.value]
+        obs_shape = self._environ_info[env_attr._OBS_SHAPE.value]
+        n_agents = self._environ_info[env_attr._N_AGENTS.value]
+        n_actions = self._environ_info[env_attr._N_ACTIONS.value]
+        max_seq_length = self._environ_info[env_attr._EP_LIMIT.value]
+
+        # create scheme blueprint
+        scheme = {
+            data_attr._STATE.value: {data_attr._VALUE_SHAPE.value: state_shape},
+            data_attr._OBS.value: {
+                data_attr._VALUE_SHAPE.value: obs_shape,
+                data_attr._GROUP.value: data_attr._AGENT_GROUP.value,
+            },
+            data_attr._ACTIONS.value: {
+                data_attr._VALUE_SHAPE.value: (1,),
+                data_attr._GROUP.value: data_attr._AGENT_GROUP.value,
+                data_attr._DTYPE.value: torch.int64,
+            },
+            data_attr._AVAIL_ACTIONS.value: {
+                data_attr._VALUE_SHAPE.value: (n_actions,),
+                data_attr._GROUP.value: data_attr._AGENT_GROUP.value,
+                data_attr._DTYPE.value: torch.int64,
+            },
+            data_attr._PROBS.value: {
+                data_attr._VALUE_SHAPE.value: (n_actions,),
+                data_attr._GROUP.value: data_attr._AGENT_GROUP.value,
+                data_attr._DTYPE.value: torch.float32,
+            },
+            data_attr._REWARD.value: {data_attr._VALUE_SHAPE.value: (1,)},
+            data_attr._TERMINATED.value: {
+                data_attr._VALUE_SHAPE.value: (1,),
+                data_attr._DTYPE.value: torch.int64,
+            },
+        }
+
+        # create groups blueprint
+        groups = {data_attr._AGENT_GROUP.value: n_agents}
+
+        # prepare preprocessing blueprint
+        preprocess = {
+            data_attr._ACTIONS.value: (
+                data_attr._ACTIONS_ONEHOT_TRANSFORM.value,
+                [OneHotTransform(out_dim=n_actions)],
+            )
+        }
+
+        # ---- ---- ---- ---- ---- #
+        # @ -> Integrate Memory
+        # ---- ---- ---- ---- ---- #
+
+        memory_conf = self._conf.buffer
+        self._memory = self._integrate_memory(
+            memory_conf,
+            scheme,
+            groups,
+            max_seq_length,
+            preprocess,
+            self._accelerator,
+            seed,
         )
 
         # ---- ---- ---- ---- ---- #
-        # --- Setup Accelerator -- #
+        # @ -> Setup Worker
         # ---- ---- ---- ---- ---- #
 
-        self._accelerator = accelerator
+        worker_conf = self._conf.buffer
+        self._trajectory_worker = self._integrate_worker(
+            worker_conf, self._trace_logger, self._environ, self._environ_info
+        )
+        self._trajectory_worker.setup(
+            scheme, groups, preprocess, self._mac, self._accelerator
+        )
+
+        # ---- ---- ---- ---- ---- #
+        # @ -> Integrate Evaluator
+        # ---- ---- ---- ---- ---- #
+
+        self._evaluator = self._integrate_evaluator(
+            self._environ, self._environ_info, self._mac, self._trace_logger
+        )
+        self._evaluator.setup(scheme, groups, preprocess, self._accelerator)
 
     def _synchronize_target_nets(self):
         """synchronize target networks inside cortex and trainable"""
         self._trainable.synchronize_target_net()
         self._mac.synchronize_target_net()
 
-    def _get_avail_actions(self, n_agents: int) -> list:
-        """return a list with available actions for each agent"""
-        avail_actions = []
-        for agent_id in range(n_agents):
-            available_actions = self._environ.get_avail_agent_actions(agent_id)
-            avail_actions.append(available_actions)
-
-        return np.array(avail_actions, dtype=np.int64)
-
-    def _evaluate(self, n_games: int = 40) -> np.ndarray:
-        """evaluate trainable on N games"""
-        results = []
-        for _ in range(n_games):
-            self._environ.reset()
-            n_agents = self._environ_info.get("n_agents", None)
-            terminated = False
-            episode_return = 0
-
-            while not terminated:
-                observations = np.array(self._environ.get_obs(), dtype=np.float32)
-                states = np.array(self._environ.get_state(), dtype=np.float32)
-                avail_actions = self._get_avail_actions(n_agents)
-
-                actions: np.ndarray = self._mac.compute_greedy_actions(
-                    observations, avail_actions, 0
-                )
-
-                reward, terminated, _ = self._environ.step(actions)
-
-                episode_return += reward
-
-            results.append(episode_return)
-
-        return results
-
-    def _move_batch_to_tensors(self, batch: list) -> list:
-        """Move numpy arrays to torch tensors"""
-        (
-            observations,
-            actions,
-            rewards,
-            next_observations,
-            dones,
-            states,
-            next_states,
-            avail_actions,
-            next_avail_actions,
-        ) = batch
-
-        # Convert each numpy array in the batch to a torch tensor and move it to the specified device
-        observations = torch.tensor(observations, dtype=torch.float32).to(
-            self._accelerator
-        )
-        actions = torch.tensor(actions, dtype=torch.int64).to(self._accelerator)
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self._accelerator)
-        next_observations = torch.tensor(next_observations, dtype=torch.float32).to(
-            self._accelerator
-        )
-        dones = torch.tensor(dones, dtype=torch.int8).to(self._accelerator)
-        states = torch.tensor(states, dtype=torch.float32).to(self._accelerator)
-        next_states = torch.tensor(next_states, dtype=torch.float32).to(
-            self._accelerator
-        )
-        avail_actions = torch.tensor(avail_actions, dtype=torch.int64).to(
-            self._accelerator
-        )
-        next_avail_actions = torch.tensor(next_avail_actions, dtype=torch.int64).to(
-            self._accelerator
-        )
-
-        # Return the tensors as a list
-        return [
-            observations,
-            actions,
-            rewards,
-            next_observations,
-            dones,
-            states,
-            next_states,
-            avail_actions,
-            next_avail_actions,
-        ]
-
-    def _log_eval_score_statistics(
-        self, eval_scores: List[list], current_rollout: int
-    ) -> None:
-        """log evaluation metrics given scores"""
-        if not eval_scores:
-            return
-
-        # Flatten the list of lists to get a single list of all evaluation scores
-        flat_scores = [score for sublist in eval_scores for score in sublist]
-
-        # Calculate statistics
-        eval_running_mean = np.mean(flat_scores)
-        eval_score_std = np.std(flat_scores)
-
-        # Log running mean and standard deviation
-        self._trace_logger.log_stat(
-            "eval_score_running_mean", eval_running_mean, current_rollout
-        )
-        self._trace_logger.log_stat("eval_score_std", eval_score_std, current_rollout)
-
-        # Calculate and log the variation between the most recent two evaluations, if available
-        if len(eval_scores) >= 2:
-            # Calculate the variation between the mean scores of the last two evaluations
-            recent_mean_scores = [np.mean(sublist) for sublist in eval_scores[-2:]]
-            eval_score_var = np.abs(recent_mean_scores[-1] - recent_mean_scores[-2])
-            self._trace_logger.log_stat(
-                "eval_score_var", eval_score_var, current_rollout
-            )
+    # --------------------------------------------------
+    # @ -> Tuner optimization mechanizm
+    # --------------------------------------------------
 
     def optimize(
         self,
@@ -400,105 +352,176 @@ class CoreTuner:
         eval_schedule: int,
         checkpoint_freq: int,
         eval_n_games: int,
-        display_freq: int = 200,
+        display_freq: int = 100,
+        timesteps_max: int = 10_000_000,
+        batch_size: int = 32,
     ) -> np.ndarray:
         """optimize trainable within N rollouts"""
+        rollout = 0
+        while self._trajectory_worker.t_env <= timesteps_max:
+            # ---- ---- ---- ---- ---- #
+            # @ -> Synchronize Nets
+            # ---- ---- ---- ---- ---- #
 
-        evaluation_scores = []
-        for rollout in range(n_rollouts):
-            # synchronize target nets with online updates
             if rollout % self._target_net_update_sched == 0:
                 self._synchronize_target_nets()
 
-            # evaluate performance on n_games
+            # ---- ---- ---- ---- ---- #
+            # @ -> Evaluate Performance
+            # ---- ---- ---- ---- ---- #
+
             if rollout % eval_schedule == 0:
-                eval_results = self._evaluate(eval_n_games)
-                evaluation_scores.append(eval_results)
+                self._evaluator.evaluate(rollout=rollout, n_games=eval_n_games)
 
-                mean_eval_score = np.mean(eval_results)
-                self._trace_logger.log_stat("eval_score_mean", mean_eval_score, rollout)
+            # ---- ---- ---- ---- ---- #
+            # @ -> Gather Rollouts
+            # ---- ---- ---- ---- ---- #
 
-                self._log_eval_score_statistics(
-                    eval_scores=evaluation_scores, current_rollout=rollout
+            # Run for a whole episode at a time
+            with torch.no_grad():
+                episode_batch = self._trajectory_worker.run()
+                self._memory.insert_episode_batch(episode_batch)
+
+            if self._memory.can_sample(batch_size):
+                episode_sample = self._memory.sample(batch_size)
+
+                # Truncate batch to only filled timesteps
+                max_ep_t = episode_sample.max_t_filled()
+                episode_sample = episode_sample[:, :max_ep_t]
+
+                if episode_sample.device != self._accelerator:
+                    episode_sample.to(self._accelerator)
+
+                # ---- ---- ---- ---- ---- #
+                # @ -> Calculate Q-Vals
+                # ---- ---- ---- ---- ---- #
+
+                # initialize hidden states of network
+                self._mac.init_hidden(batch_size=batch_size)
+
+                timewise_eval_estimates = []
+                timewise_target_estimates = []
+
+                max_seq_length = episode_sample.max_seq_length
+                for seq_t in range(max_seq_length):
+                    # timewise slices of episodes
+                    episode_time_slice = episode_sample[:, seq_t]
+
+                    eval_net_q_estimates = self._mac.estimate_eval_q_vals(
+                        feed=episode_time_slice
+                    )
+                    target_net_q_estimates = self._mac.estimate_target_q_vals(
+                        feed=episode_time_slice
+                    )
+
+                    # append timewise list with agent q estimates
+                    timewise_eval_estimates.append(eval_net_q_estimates)
+                    timewise_target_estimates.append(target_net_q_estimates)
+
+                # stack estimates timewise
+                t_timewise_eval_estimates = torch.stack(timewise_eval_estimates, dim=1)
+                t_timewise_target_estimates = torch.stack(
+                    timewise_target_estimates, dim=1
                 )
 
-            # if memory ready optimize network
-            if self._trajectory_collector.memory_ready():
-                batch = self._trajectory_collector.sample_batch()
-                t_batch = self._move_batch_to_tensors(batch)
-                # unpack batch
-                (
-                    observations,
-                    actions,
-                    rewards,
-                    next_observations,
-                    dones,
-                    states,
-                    next_states,
-                    avail_actions,
-                    next_avail_actions,
-                ) = t_batch
+                # ---- ---- ---- ---- ---- #
+                # @ -> Calculate Loss
+                # ---- ---- ---- ---- ---- #
 
-                # prepare feed for networks
-                eval_net_feed = {
-                    "observations": observations,
-                    "avail_actions": avail_actions,
-                }
+                # eval does not need last estimate
+                t_timewise_eval_estimates = t_timewise_eval_estimates[:, :-1]
 
-                target_net_feed = {
-                    "observations": next_observations,
-                    "avail_actions": avail_actions,
-                }
-
-                # n_agents X batch_size X n_q_values
-                eval_net_q_estimates = self._mac.estimate_eval_q_vals(
-                    feed=eval_net_feed
-                )
-                target_net_q_estimates = self._mac.estimate_target_q_vals(
-                    feed=target_net_feed
-                )
-
-                trainable_feed = {
-                    "actions": actions,
-                    "states": states,
-                    "next_states": next_states,
-                    "avail_actions": avail_actions,
-                    "next_avail_actions": next_avail_actions,
-                    "rewards": rewards,
-                    "dones": dones,
-                }
+                # target does not need first estimate
+                t_timewise_target_estimates = t_timewise_target_estimates[:, 1:]
 
                 trainable_loss = self._trainable.calculate_loss(
-                    feed=trainable_feed,
-                    eval_q_vals=eval_net_q_estimates,
-                    target_q_vals=target_net_q_estimates,
+                    feed=episode_sample,
+                    eval_q_vals=t_timewise_eval_estimates,
+                    target_q_vals=t_timewise_target_estimates,
                 )
-
                 self._optimizer.zero_grad()
-
                 trainable_loss.backward()
-
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self._params, self._grad_clip
                 )
-
                 self._optimizer.step()
 
                 self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
                 self._trace_logger.log_stat("gradient_norm", grad_norm, rollout)
 
-            # use multi agent cortex to collect rollouts
-            self._trajectory_collector.roll_environ_and_collect_trajectory(
-                mac=self._mac
-            )
+            # ---- ---- ---- ---- ---- #
+            # @ -> Log Stats
+            # ---- ---- ---- ---- ---- #
 
-            # display stats in some intervals
             if rollout % display_freq == 0:
                 self._trace_logger.display_recent_stats()
 
-    def draw_computational_graph(self) -> None:
-        """draw computational graph using torchviz"""
-        pass
+            # update episode counter ( works for synchronous training )
+            rollout += 1
+
+    # --------------------------------------------------
+    # @ -> Methods for saving models and debugging
+    # --------------------------------------------------
+
+    def draw_computational_graph(self, dummy_episode_sample) -> None:
+        """Draw computational graph using torchviz
+
+        Args:
+        dummy_episode_sample: A representative sample of the episode data.
+        """
+
+        # Ensure the dummy input is on the same device as the model
+        if dummy_episode_sample.device != self._accelerator:
+            dummy_episode_sample.to(self._accelerator)
+
+        # Initialize hidden states of network
+        self._mac.init_hidden(batch_size=dummy_episode_sample.batch_size)
+
+        timewise_eval_estimates = []
+        timewise_target_estimates = []
+        max_seq_length = dummy_episode_sample.max_seq_length
+
+        for seq_t in range(max_seq_length):
+            # Timewise slices of episodes
+            episode_time_slice = dummy_episode_sample[:, seq_t]
+
+            eval_net_q_estimates = self._mac.estimate_eval_q_vals(
+                feed=episode_time_slice
+            )
+            target_net_q_estimates = self._mac.estimate_target_q_vals(
+                feed=episode_time_slice
+            )
+
+            # Append timewise list with agent q estimates
+            timewise_eval_estimates.append(eval_net_q_estimates)
+            timewise_target_estimates.append(target_net_q_estimates)
+
+        # Stack estimates timewise
+        t_timewise_eval_estimates = torch.stack(timewise_eval_estimates, dim=1)
+        t_timewise_target_estimates = torch.stack(timewise_target_estimates, dim=1)
+
+        # Truncate to only filled timesteps
+        t_timewise_eval_estimates = t_timewise_eval_estimates[:, :-1]
+        t_timewise_target_estimates = t_timewise_target_estimates[:, 1:]
+
+        # Calculate loss
+        trainable_loss = self._trainable.calculate_loss(
+            feed=dummy_episode_sample,
+            eval_q_vals=t_timewise_eval_estimates,
+            target_q_vals=t_timewise_target_estimates,
+        )
+
+        # Manually assign names to parameters and collect them in a dictionary
+        all_parameters = chain(self._mac.parameters(), self._trainable.parameters())
+        named_parameters = {f"param_{i}": p for i, p in enumerate(all_parameters)}
+
+        # Generate the graph from the loss
+        graph = make_dot(
+            trainable_loss, params=named_parameters, show_attrs=True, show_saved=True
+        )
+
+        # Render the graph to a file
+        graph.render("computational_graph", format="png", cleanup=True)
 
     def save_models(self) -> bool:
         """save all models"""

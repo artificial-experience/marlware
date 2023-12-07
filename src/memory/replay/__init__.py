@@ -1,2 +1,3 @@
-from .generic import GenericReplayMemory
-from .generic import initialize_memory
+# TODO: refactor later
+from .episode_batch import EpisodeBatch
+from .episode_batch import ReplayBuffer

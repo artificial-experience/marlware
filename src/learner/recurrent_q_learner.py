@@ -5,6 +5,10 @@ import torch
 from omegaconf import OmegaConf
 from torch.nn import functional as F
 
+from src.transforms import OneHotTransform
+from src.util import methods
+from src.util.constants import AttrKey
+
 
 class RecurrentQLearner:
     """
@@ -41,10 +45,21 @@ class RecurrentQLearner:
         self, feed: Dict[str, torch.Tensor], use_target=False
     ) -> torch.Tensor:
         """estimate q value given feed tensor"""
-        observations = feed.get("observations", None)
-        avail_actions = feed.get("avail_actions", None)
+        data_attr = AttrKey.data
 
-        bs, n_agents, n_q_values = avail_actions.shape
+        observations = feed[data_attr._OBS.value]
+        avail_actions = feed[data_attr._AVAIL_ACTIONS.value]
+        actions = feed[data_attr._ACTIONS.value]
+
+        bs, time, n_agents, n_q_values = avail_actions.shape
+
+        # ensure proper shape of tensors - without time as this dimension is 1
+        observations = observations.view(bs, n_agents, -1)
+        actions = actions.view(bs, n_agents, -1)
+
+        # prepare agent actions
+        one_hot = OneHotTransform(n_q_values)
+        one_hot_actions = one_hot.transform(actions).view(bs, n_agents, -1)
 
         agent_identifier_one_hot = self.one_hot_identifier.view(1, -1)
         agent_identifier_one_hot = agent_identifier_one_hot.repeat(bs, 1)
@@ -52,28 +67,24 @@ class RecurrentQLearner:
 
         # get current agent's observations slices
         agent_observations = observations[:, serialized_identifier, :]
+        agent_one_hot_actions = one_hot_actions[:, serialized_identifier, :]
 
         prepared_feed = torch.cat(
-            [agent_observations, agent_identifier_one_hot], dim=-1
+            [agent_observations, agent_identifier_one_hot, agent_one_hot_actions],
+            dim=-1,
         )
         prepared_feed = prepared_feed.view(bs, -1)
 
-        # zero hidden state before every update
-        initial_hidden = (
-            self._target_net.init_hidden_state(bs)
+        q_vals = (
+            self._target_net(prepared_feed)
             if use_target
-            else self._eval_net.init_hidden_state(bs)
+            else self._eval_net(prepared_feed)
         )
 
-        q_vals, hidden = (
-            self._target_net(prepared_feed, initial_hidden)
-            if use_target
-            else self._eval_net(prepared_feed, initial_hidden)
-        )
-        return q_vals, hidden
+        return q_vals
 
     # ---- ---- ---- ---- ---- #
-    # --- Partial Methods ---- #
+    # @ -> Partial Methods
     # ---- ---- ---- ---- ---- #
 
     estimate_eval_q = partialmethod(estimate_q_value, use_target=False)

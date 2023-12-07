@@ -81,13 +81,15 @@ class QMixer(nn.Module):
             nn.Linear(self._mixer_embed_dim, 1),
         )
 
-    def forward(self, agent_qs: torch.Tensor, states: torch.Tensor):
+    def forward(self, agent_qs: torch.Tensor, state: torch.Tensor):
+        bs = agent_qs.size(0)
+
         # state shape: [batch_size, 168]
-        states = states.reshape(-1, self._state_dim)
+        state = state.reshape(-1, self._state_dim)
 
         # First Layer
-        w1 = torch.abs(self._hyper_w_1(states))
-        b1 = self._hyper_b_1(states)
+        w1 = torch.abs(self._hyper_w_1(state))
+        b1 = self._hyper_b_1(state)
 
         # w1 shape: [batch_size, 8, 32]
         w1 = w1.reshape(-1, self._n_agents, self._mixer_embed_dim)
@@ -99,16 +101,16 @@ class QMixer(nn.Module):
         # hidden shape: [batch_size, 1, 32]
         hidden = F.elu(torch.bmm(agent_qs, w1) + b1)
 
-        w_final = torch.abs(self._hyper_w_final(states))
+        w_final = torch.abs(self._hyper_w_final(state))
 
         # w_final shape: [batch_size, 32, 1]
         w_final = w_final.reshape(-1, self._mixer_embed_dim, 1)
 
-        value = self._V(states)
+        value = self._V(state)
         # value shape: [batch_size, 1, 1]
         value = value.reshape(-1, 1, 1)
 
         # q_tot shape: [batch_size, 1, 1]
         q_tot = torch.bmm(hidden, w_final) + value
 
-        return q_tot
+        return q_tot.view(bs, -1, 1)
