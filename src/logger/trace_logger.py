@@ -17,6 +17,7 @@ class TraceLogger:
         """Initialize placeholders for stats."""
         self._stats["eval_score_mean"].append((0, 0.0))
         self._stats["eval_score_running_mean"].append((0, 0.0))
+        self._stats["eval_won_battles_mean"].append((0, 0.0))
         self._stats["eval_score_std"].append((0, float("inf")))
         self._stats["eval_score_var"].append((0, float("inf")))
 

@@ -17,6 +17,8 @@ from src.memory.replay import ReplayBuffer
 from src.memory.worker import EpisodeRunner
 from src.registry import trainable_global_registry
 from src.transforms import OneHotTransform
+from src.util import constants
+from src.util import methods
 from src.util.constants import AttrKey
 
 
@@ -335,7 +337,11 @@ class CoreTuner:
         self._evaluator = self._integrate_evaluator(
             self._environ, self._environ_info, self._mac, self._trace_logger
         )
-        self._evaluator.setup(scheme, groups, preprocess, self._accelerator)
+        current_timestamp = methods.get_current_timestamp()
+        replay_save_path = constants.REPLAY_DIR / current_timestamp
+        self._evaluator.setup(
+            scheme, groups, preprocess, self._accelerator, replay_save_path
+        )
 
     def _synchronize_target_nets(self):
         """synchronize target networks inside cortex and trainable"""

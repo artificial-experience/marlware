@@ -74,7 +74,7 @@ def runner(cfg: DictConfig) -> None:
 
     accelerator = device.get("accelerator", "cpu")
     seed = device.get("seed", None)
-    tuner = delegate_tuner("3m", trainable_conf, accelerator, trace_logger, seed=seed)
+    tuner = delegate_tuner("8m", trainable_conf, accelerator, trace_logger, seed=seed)
 
     n_rollouts = runtime.n_rollouts
     eval_schedule = runtime.eval_schedule
