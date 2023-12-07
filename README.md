@@ -16,6 +16,33 @@ This repository is designed to be modular, allowing researchers and enthusiasts 
 
 - **Reproducibility of Results**: Ensuring the reproducibility of results is a core principle of Marl-Engineering. The repository is structured to enable researchers to replicate experiments and validate findings easily.
 
+## Installation
+It is necessary to install pysc2 before using this reporitory, please refer to:
+> https://github.com/google-deepmind/pysc2
+---
+- Poetry installation
+```
+source activate_env.sh
+```
+- Docker installation (work in progress)
+```
+source install_docker.sh
+```
+
+## Experiments
+- Run default configuration
+```
+python3 src/tune.py
+```
+or
+```
+python3 src/tune.py --config-name="trial.yaml"
+```
+- Run specific configuration
+```
+python3 src/tune.py --config-name="<defined-custom_config>.yaml"
+```
+
 ## Applications and Use Cases
 
 Marl-Engineering is ideal for tackling complex cooperative tasks that require coordination among multiple agents. Its applications span across various domains, such as strategic games, collaborative robotics, and multi-agent simulations. By providing a flexible and adaptable framework, Marl-Engineering aims to push the boundaries of what's possible in the realm of MARL.
@@ -23,6 +50,11 @@ Marl-Engineering is ideal for tackling complex cooperative tasks that require co
 ## Join the Journey
 
 As Marl-Engineering continues to grow, I plan to integrate cutting-edge technologies and methodologies to enhance its capabilities further. I invite collaborators, researchers, and enthusiasts to join me in this exciting journey of discovery and innovation in the world of Multi-Agent Reinforcement Learning.
+
+## Reference
+Some of the implementation ideas were taken from pymarl and pymarl2, you can refer to those sources in the links below:
+> pymarl -> https://github.com/oxwhirl/pymarl <br />
+> pymarl2 -> https://github.com/hijkzzz/pymarl2
 
 ## Citation
 
