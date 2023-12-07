@@ -1,23 +1,34 @@
-FROM nvidia/cuda:12.3.0-runtime-ubuntu22.04
-
+FROM --platform=linux/amd64 nvidia/cuda:12.3.0-runtime-ubuntu22.04
 LABEL maintainer="James Chojnacki"
+
+# Set non-interactive frontend (to avoid interactive dialogues during apt-get install)
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set default timezone (replace 'Etc/UTC' with your desired timezone)
+ENV TZ=Etc/UTC
 
 # Ubuntu Packages
 RUN apt-get update -y && \
-    apt-get install software-properties-common -y && \
-    add-apt-repository -y multiverse && apt-get update -y && apt-get upgrade -y && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update -y && apt-get upgrade -y && \
     apt-get install -y apt-utils vim man build-essential wget sudo && \
+    apt-get install -y python3.9 python3.9-dev python3.9-distutils && \
+    apt-get install -y swig gcc git curl unzip && \
     rm -rf /var/lib/apt/lists/*
 
-# Update package lists and install curl
+# Ubuntu Packages
 RUN apt-get update -y && \
-    apt-get install -y swig && \
-    apt-get install -y gcc && \
-    apt-get install -y git && \
-    apt-get install -y python3-dev && \
-    apt-get install -y curl && \
-    apt-get install -y unzip && \
+    add-apt-repository -y multiverse && apt-get update -y && apt-get upgrade -y && \
+    apt-get install -y sudo && \
     rm -rf /var/lib/apt/lists/*
+
+# Install curl and other dependencies
+RUN apt-get update -y && apt-get install -y libssl-dev openssl libopenblas-dev \
+    libhdf5-dev hdf5-helpers hdf5-tools libhdf5-serial-dev libprotobuf-dev protobuf-compiler
+
+# Update alternatives to use Python 3.9 as the default version of Python3
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
 
 # Install Poetry
 RUN curl -sSL -o install-poetry.py https://install.python-poetry.org && \
@@ -44,6 +55,9 @@ RUN chmod +x activate_env.sh install_sc2.sh
 
 # Install StarCraft II
 RUN ./install_sc2.sh
+
+# Activate
+RUN ./activate_env.sh
 
 # Set StarCraftII path
 ENV SC2PATH /marl/games/StarCraftII

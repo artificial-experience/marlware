@@ -5,6 +5,7 @@ import torch
 from omegaconf import OmegaConf
 from torch.nn import functional as F
 
+from src.transforms import OneHotTransform
 from src.util import methods
 from src.util.constants import AttrKey
 
@@ -57,9 +58,8 @@ class RecurrentQLearner:
         actions = actions.view(bs, n_agents, -1)
 
         # prepare agent actions
-        one_hot_actions = methods.convert_agent_actions_to_one_hot(
-            actions, n_q_values
-        ).view(bs, n_agents, -1)
+        one_hot = OneHotTransform(n_q_values)
+        one_hot_actions = one_hot.transform(actions).view(bs, n_agents, -1)
 
         agent_identifier_one_hot = self.one_hot_identifier.view(1, -1)
         agent_identifier_one_hot = agent_identifier_one_hot.repeat(bs, 1)

@@ -1,12 +1,13 @@
 import random
+from itertools import chain
 from logging import Logger
 from typing import List
 from typing import Optional
 
 import numpy as np
 import torch
-import torchviz
 from omegaconf import OmegaConf
+from torchviz import make_dot
 
 from src import trainable
 from src.cortex import MultiAgentCortex
@@ -227,7 +228,10 @@ class CoreTuner:
         # ---- ---- ---- ---- ---- #
 
         learning_rate = self._conf.learner.training.lr
-        self._optimizer = torch.optim.Adam(params=self._params, lr=learning_rate)
+        # TODO: move alpha and eps to config file
+        self._optimizer = torch.optim.RMSprop(
+            params=self._params, lr=learning_rate, alpha=0.99, eps=1e-5
+        )
 
         # ---- ---- ---- ---- ---- #
         # @ -> Setup Grad Clip
@@ -337,6 +341,10 @@ class CoreTuner:
         """synchronize target networks inside cortex and trainable"""
         self._trainable.synchronize_target_net()
         self._mac.synchronize_target_net()
+
+    # --------------------------------------------------
+    # @ -> Tuner optimization mechanizm
+    # --------------------------------------------------
 
     def optimize(
         self,
@@ -451,9 +459,69 @@ class CoreTuner:
             # update episode counter ( works for synchronous training )
             rollout += 1
 
-    def draw_computational_graph(self) -> None:
-        """draw computational graph using torchviz"""
-        pass
+    # --------------------------------------------------
+    # @ -> Methods for saving models and debugging
+    # --------------------------------------------------
+
+    def draw_computational_graph(self, dummy_episode_sample) -> None:
+        """Draw computational graph using torchviz
+
+        Args:
+        dummy_episode_sample: A representative sample of the episode data.
+        """
+
+        # Ensure the dummy input is on the same device as the model
+        if dummy_episode_sample.device != self._accelerator:
+            dummy_episode_sample.to(self._accelerator)
+
+        # Initialize hidden states of network
+        self._mac.init_hidden(batch_size=dummy_episode_sample.batch_size)
+
+        timewise_eval_estimates = []
+        timewise_target_estimates = []
+        max_seq_length = dummy_episode_sample.max_seq_length
+
+        for seq_t in range(max_seq_length):
+            # Timewise slices of episodes
+            episode_time_slice = dummy_episode_sample[:, seq_t]
+
+            eval_net_q_estimates = self._mac.estimate_eval_q_vals(
+                feed=episode_time_slice
+            )
+            target_net_q_estimates = self._mac.estimate_target_q_vals(
+                feed=episode_time_slice
+            )
+
+            # Append timewise list with agent q estimates
+            timewise_eval_estimates.append(eval_net_q_estimates)
+            timewise_target_estimates.append(target_net_q_estimates)
+
+        # Stack estimates timewise
+        t_timewise_eval_estimates = torch.stack(timewise_eval_estimates, dim=1)
+        t_timewise_target_estimates = torch.stack(timewise_target_estimates, dim=1)
+
+        # Truncate to only filled timesteps
+        t_timewise_eval_estimates = t_timewise_eval_estimates[:, :-1]
+        t_timewise_target_estimates = t_timewise_target_estimates[:, 1:]
+
+        # Calculate loss
+        trainable_loss = self._trainable.calculate_loss(
+            feed=dummy_episode_sample,
+            eval_q_vals=t_timewise_eval_estimates,
+            target_q_vals=t_timewise_target_estimates,
+        )
+
+        # Manually assign names to parameters and collect them in a dictionary
+        all_parameters = chain(self._mac.parameters(), self._trainable.parameters())
+        named_parameters = {f"param_{i}": p for i, p in enumerate(all_parameters)}
+
+        # Generate the graph from the loss
+        graph = make_dot(
+            trainable_loss, params=named_parameters, show_attrs=True, show_saved=True
+        )
+
+        # Render the graph to a file
+        graph.render("computational_graph", format="png", cleanup=True)
 
     def save_models(self) -> bool:
         """save all models"""

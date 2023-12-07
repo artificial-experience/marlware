@@ -18,3 +18,20 @@ else
 fi
 
 echo 'StarCraft II is installed in: '$TARGET_DIR
+
+# Installing SMAC Maps
+echo 'Installing SMAC maps...'
+
+MAP_DIR="$TARGET_DIR/StarCraftII/Maps"
+echo 'MAP_DIR is set to '$MAP_DIR
+
+if [ ! -d $MAP_DIR ]; then
+    mkdir -p $MAP_DIR
+fi
+
+# Download and unzip SMAC Maps into the Maps directory
+wget https://github.com/oxwhirl/smac/releases/download/v0.1-beta1/SMAC_Maps.zip
+unzip SMAC_Maps.zip -d $MAP_DIR
+rm SMAC_Maps.zip
+
+echo 'StarCraft II and all maps are installed.'

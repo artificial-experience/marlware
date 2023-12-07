@@ -56,9 +56,11 @@ class DRQN(nn.Module):
         bs, embed = feed.size()
 
         # first layer inference and relu activation
-        out = F.relu(self._fc1(feed), inplace=True)
+        out = self._fc1(feed)
+        out = F.relu(out)
 
         # reshape hidden state in case it does not match embedding dimension
+        assert self._hidden is not None, "hidden state was not initialized"
         hidden = self._hidden.reshape(-1, self._rnn_hidden_dim)
 
         # rnn feed forward
