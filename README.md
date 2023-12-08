@@ -1,4 +1,4 @@
-# MARL Engineering: Modular Multi-Agent Reinforcement Learning
+# MARLverse: Modular Multi-Agent Reinforcement Learning
 
 Welcome to Marl-Engineering, a repository dedicated to developing a robust and modular framework for Multi-Agent Reinforcement Learning (MARL) algorithms. This project is a testament to my commitment to advancing research in MARL by focusing on modular design, code readability, and reproducibility of results.
 
