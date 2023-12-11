@@ -1,6 +1,9 @@
+import logging
+import os
 import random
 from itertools import chain
 from logging import Logger
+from pathlib import Path
 from typing import List
 from typing import Optional
 
@@ -68,6 +71,9 @@ class ProtoTuner(ProtoTuner):
 
         # evaluator
         self._evaluator = None
+
+        # run identifier
+        self._run_identifier = None
 
     def _integrate_trainable(
         self,
@@ -175,11 +181,18 @@ class ProtoTuner(ProtoTuner):
         environ_prefix: str,
         accelerator: str,
         logger: Logger,
+        run_id: str,
         *,
         seed: Optional[int] = None,
     ) -> None:
         """based on conf delegate tuner object with given parameters"""
         self._rnd_seed(seed=seed)
+
+        # ---- ---- ---- ---- ---- #
+        # @ -> Setup Run Idenfifier
+        # ---- ---- ---- ---- ---- #
+
+        self._run_identifier = run_id
 
         # ---- ---- ---- ---- ---- #
         # @ -> Setup Accelerator
@@ -188,7 +201,7 @@ class ProtoTuner(ProtoTuner):
         self._accelerator = accelerator
 
         # ---- ---- ---- ---- ---- #
-        # @ ->  - Setup Logger
+        # @ -> Setup Logger
         # ---- ---- ---- ---- ---- #
 
         self._trace_logger = logger
@@ -353,10 +366,13 @@ class ProtoTuner(ProtoTuner):
         self._evaluator = self._integrate_evaluator(
             self._environ, self._environ_info, self._mac, self._trace_logger
         )
-        current_timestamp = methods.get_current_timestamp()
-        replay_save_path = constants.REPLAY_DIR / current_timestamp
+        replay_save_path = constants.REPLAY_DIR / self._run_identifier
         self._evaluator.setup(
-            scheme, groups, preprocess, self._accelerator, replay_save_path
+            scheme,
+            groups,
+            preprocess,
+            self._accelerator,
+            replay_save_path,
         )
 
     def _synchronize_target_nets(self):
@@ -368,9 +384,15 @@ class ProtoTuner(ProtoTuner):
     # @ -> Methods for saving and loading models
     # --------------------------------------------------
 
-    def save_models(self) -> bool:
+    def save_models(self, model_identifier: str) -> bool:
         """save all models"""
-        pass
+        save_directory = constants.MODEL_SAVE_DIR / self._run_identifier
+
+        if not os.path.exists(save_directory):
+            os.makedirs(save_directory)
+
+        self._mac.save_models(save_directory, model_identifier)
+        self._trainable.save_models(save_directory, model_identifier)
 
     def load_models(self, path_to_models: str) -> bool:
         """load all models given path"""

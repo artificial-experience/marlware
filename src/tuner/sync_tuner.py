@@ -36,11 +36,12 @@ class SyncTuner(ProtoTuner):
         environ_prefix: str,
         accelerator: str,
         logger: Logger,
+        run_id: str,
         *,
         seed: Optional[int] = None,
     ) -> None:
         """based on conf delegate tuner object with given parameters"""
-        super().commit(environ_prefix, accelerator, logger, seed=seed)
+        super().commit(environ_prefix, accelerator, logger, run_id, seed=seed)
 
     # --------------------------------------------------
     # @ -> Tuner optimization mechanizm
@@ -70,7 +71,13 @@ class SyncTuner(ProtoTuner):
             # ---- ---- ---- ---- ---- #
 
             if rollout % eval_schedule == 0:
-                self._evaluator.evaluate(rollout=rollout, n_games=eval_n_games)
+                is_new_best = self._evaluator.evaluate(
+                    rollout=rollout, n_games=eval_n_games
+                )
+
+                if is_new_best:
+                    model_identifier = "best_model.pt"
+                    self.save_models(model_identifier)
 
             # ---- ---- ---- ---- ---- #
             # @ -> Gather Rollouts

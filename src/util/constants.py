@@ -6,7 +6,8 @@ from pathlib import Path
 ROOT_DIR = Path(os.getenv("ROOT", "."))
 SRC_DIR = ROOT_DIR / "src"
 RESULTS_DIR = ROOT_DIR / "outputs"
-REPLAY_DIR = ROOT_DIR / "replays"
+REPLAY_DIR = RESULTS_DIR / "replays"
+MODEL_SAVE_DIR = RESULTS_DIR / "models"
 CONF_DIR = SRC_DIR / "conf"
 WEIGHTS_DIR = SRC_DIR / "weights"
 TRAINABLE_CONF_DIR = CONF_DIR / "trainable"

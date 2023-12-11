@@ -1,6 +1,7 @@
 import copy
 import random
 from functools import partialmethod
+from pathlib import Path
 from typing import Dict
 from typing import Optional
 
@@ -91,3 +92,13 @@ class ProtoQmix(ProtoTrainable):
         """move models to cuda device"""
         self._eval_mixer.cuda()
         self._target_mixer.cuda()
+
+    def save_models(self, save_directory: Path, model_identifier: str) -> None:
+        """save model weights to target directory"""
+        eval_model_save_path = save_directory / f"eval_mixer_{model_identifier}"
+        target_model_save_path = save_directory / "target_mixer_{}".format(
+            model_identifier
+        )
+
+        torch.save(self._eval_mixer.state_dict(), eval_model_save_path)
+        torch.save(self._target_mixer.state_dict(), target_model_save_path)

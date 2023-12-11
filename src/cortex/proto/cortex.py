@@ -1,6 +1,7 @@
 import copy
 import random
 from functools import partialmethod
+from pathlib import Path
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -138,3 +139,13 @@ class ProtoCortex(ProtoCortex):
             target_param.data.copy_(
                 tau * eval_param.data + (1 - tau) * target_param.data
             )
+
+    def save_models(self, save_directory: Path, model_identifier: str) -> None:
+        """save model weights to target directory"""
+        eval_model_save_path = save_directory / f"eval_net_{model_identifier}"
+        target_model_save_path = save_directory / "target_net_{}".format(
+            model_identifier
+        )
+
+        torch.save(self._eval_drqn_network.state_dict(), eval_model_save_path)
+        torch.save(self._target_drqn_network.state_dict(), target_model_save_path)

@@ -16,11 +16,16 @@ class TraceLogger:
     def _initialize_placeholders(self):
         """Initialize placeholders for stats."""
         self._stats["timesteps_passed"].append((0, 0))
+
         self._stats["eval_score_mean"].append((0, 0.0))
         self._stats["eval_score_running_mean"].append((0, 0.0))
         self._stats["eval_won_battles_mean"].append((0, 0.0))
-        self._stats["eval_score_std"].append((0, float("inf")))
-        self._stats["eval_score_var"].append((0, float("inf")))
+
+        self._stats["eval_most_won_battles"].append((0, 0.0))
+        self._stats["eval_mean_higest_score"].append((0, 0.0))
+
+        self._stats["eval_score_std"].append((0, 0.0))
+        self._stats["eval_score_var"].append((0, 0.0))
 
     def log_stat(self, stat: str, value: Tuple[int, float], episode: int) -> None:
         self._stats[stat].append((episode, value))

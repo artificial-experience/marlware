@@ -30,7 +30,8 @@ class CoreEvaluator:
     ) -> None:
         """instantiate internal states"""
         self._performance = []
-        self._best_score = -np.inf
+        self._best_score = 0.0
+        self._highest_battle_win_score = 0.0
 
         self._env = env
         self._env_info = env_info
@@ -131,11 +132,26 @@ class CoreEvaluator:
 
         mean_score = np.mean(evaluation_scores)
         mean_won_battles = np.mean(won_battles)
+
         self._performance.append(mean_score)
+        self._highest_battle_win_score = max(
+            self._highest_battle_win_score, mean_won_battles
+        )
 
         self.log_eval_score_stats(
-            mean_score, self._performance, rollout, mean_won_battles
+            mean_score,
+            self._performance,
+            rollout,
+            mean_won_battles,
+            self._best_score,
+            self._highest_battle_win_score,
         )
+
+        is_new_best = True if (mean_score > self._best_score) else False
+        if is_new_best:
+            self._best_score = mean_score
+
+        return is_new_best
 
     def log_eval_score_stats(
         self,
@@ -143,6 +159,8 @@ class CoreEvaluator:
         global_scores: list,
         rollout: int,
         mean_won_battles: list,
+        best_score_recorded: float,
+        highest_battle_win_score: float,
     ) -> None:
         """log evaluation metrics given scores"""
         if not global_scores:
@@ -160,6 +178,12 @@ class CoreEvaluator:
         )
         self._trace_logger.log_stat("eval_score_std", eval_score_std, rollout)
         self._trace_logger.log_stat("eval_won_battles_mean", mean_won_battles, rollout)
+        self._trace_logger.log_stat(
+            "eval_most_won_battles", highest_battle_win_score, rollout
+        )
+        self._trace_logger.log_stat(
+            "eval_mean_higest_score", best_score_recorded, rollout
+        )
 
         # Calculate and log the variation between the most recent two evaluations, if available
         if len(global_scores) >= 2:

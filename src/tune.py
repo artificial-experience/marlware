@@ -10,6 +10,7 @@ from node import deserialize_configuration_node
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
 from tuner import SyncTuner
+from util import methods
 
 
 def delegate_tuner(
@@ -22,10 +23,15 @@ def delegate_tuner(
 ) -> SyncTuner:
     """delegate tuner w.r.t passed configuration"""
     tuner = SyncTuner(configuration)
+
+    timestamp = methods.get_current_timestamp()
+    run_identifier = f"marlverse-run-{environ_prefix}-{timestamp}"
+
     tuner.commit(
         environ_prefix=environ_prefix,
         accelerator=accelerator,
         logger=trace_logger,
+        run_id=run_identifier,
         seed=seed,
     )
     return tuner
@@ -78,11 +84,11 @@ def runner(cfg: DictConfig) -> None:
     )
 
     n_timesteps = runtime.n_timesteps
+    batch_size = trainable_conf.buffer.batch_size
     eval_schedule = runtime.eval_schedule
     checkpoint_freq = runtime.checkpoint_frequency
     eval_n_games = runtime.n_games
     display_freq = runtime.display_freq
-    batch_size = trainable_conf.buffer.batch_size
 
     tuner.optimize(
         n_timesteps,
