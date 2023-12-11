@@ -6,7 +6,7 @@ from typing import Optional
 import numpy as np
 from omegaconf import OmegaConf
 
-from src.cortex import MultiAgentCortex
+from src.cortex import RecQCortex
 from src.environ.starcraft import SC2Environ
 from src.memory.replay import EpisodeBatch
 
@@ -25,11 +25,8 @@ class CoreEvaluator:
         # horizon
         self._episode_limit = None
 
-        # results path
-        self._path = "./"
-
     def ensemble_evaluator(
-        self, env: SC2Environ, env_info: dict, cortex: MultiAgentCortex, logger: Logger
+        self, env: SC2Environ, env_info: dict, cortex: RecQCortex, logger: Logger
     ) -> None:
         """instantiate internal states"""
         self._performance = []
@@ -48,7 +45,7 @@ class CoreEvaluator:
         groups: dict,
         preprocess: dict,
         device: str,
-        path: Optional[Path] = None,
+        replay_save_path: Path,
     ) -> None:
         """setup new batch blueprint"""
         self.new_batch = partial(
@@ -61,7 +58,7 @@ class CoreEvaluator:
             device=device,
         )
 
-        self._path = path
+        self._env.replay_dir = replay_save_path
 
     def reset(self) -> None:
         """reset internal state and create new batch"""
@@ -72,12 +69,16 @@ class CoreEvaluator:
     def evaluate(self, rollout, n_games: Optional[int] = 10):
         """evaluate cortex performance on selected env"""
         evaluation_scores = []
+        won_battles = []
         for game in range(n_games):
             self.reset()
 
             terminated = False
             episode_return = 0
             self._mac.init_hidden(batch_size=self._batch_size)
+
+            # count episodes and record
+            self.record_replay(game)
 
             while not terminated:
                 pre_transition_data = {
@@ -123,15 +124,25 @@ class CoreEvaluator:
 
             self._batch.update({"actions": actions}, ts=self._timestep)
 
+            is_won = int(env_info.get("battle_won", False))
+            won_battles.append(is_won)
+
             evaluation_scores.append(episode_return)
 
         mean_score = np.mean(evaluation_scores)
+        mean_won_battles = np.mean(won_battles)
         self._performance.append(mean_score)
 
-        self.log_eval_score_stats(mean_score, self._performance, rollout)
+        self.log_eval_score_stats(
+            mean_score, self._performance, rollout, mean_won_battles
+        )
 
     def log_eval_score_stats(
-        self, local_scores: list, global_scores: list, rollout: int
+        self,
+        local_scores: list,
+        global_scores: list,
+        rollout: int,
+        mean_won_battles: list,
     ) -> None:
         """log evaluation metrics given scores"""
         if not global_scores:
@@ -148,6 +159,7 @@ class CoreEvaluator:
             "eval_score_running_mean", eval_running_mean, rollout
         )
         self._trace_logger.log_stat("eval_score_std", eval_score_std, rollout)
+        self._trace_logger.log_stat("eval_won_battles_mean", mean_won_battles, rollout)
 
         # Calculate and log the variation between the most recent two evaluations, if available
         if len(global_scores) >= 2:
@@ -156,6 +168,7 @@ class CoreEvaluator:
             eval_score_var = np.abs(recent_mean_scores[-1] - recent_mean_scores[-2])
             self._trace_logger.log_stat("eval_score_var", eval_score_var, rollout)
 
-    def record_replay(self) -> None:
+    def record_replay(self, episode: int, record_freq: Optional[int] = 10) -> None:
         """record evaluation replay"""
-        pass
+        if episode % record_freq == 0:
+            self._env.save_replay()

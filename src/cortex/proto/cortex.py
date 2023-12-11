@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 from omegaconf import OmegaConf
 
+from src.abstract import ProtoCortex
 from src.heuristic.policy import EpsilonGreedy
 from src.learner import RecurrentQLearner
 from src.net import DRQN
@@ -17,10 +18,9 @@ from src.util import methods
 from src.util.constants import AttrKey
 
 
-class MultiAgentCortex:
+class ProtoCortex(ProtoCortex):
     """
-    Interface for multi-agent coordination and optimization [ mac ]
-    NOTE: Shared parameters implementation
+    Abstraction layer for multi-agent coordination and optimization [ mac ]
 
     Args:
         :param [model_conf]: mac configuration OmegaConf
@@ -112,81 +112,6 @@ class MultiAgentCortex:
                 eval_net=self._eval_drqn_network, target_net=self._target_drqn_network
             )
 
-    def infer_actions(
-        self,
-        data: dict,
-        rollout_timestep: int,
-        env_timestep: int,
-        evaluate: bool = False,
-    ) -> np.ndarray:
-        """get feed and compute agents actions to take in the environment"""
-
-        data_attr = AttrKey.data
-
-        # prepare feed and expand tensor to 4d
-        observations = data[data_attr._OBS.value][:, rollout_timestep].unsqueeze(0)
-        avail_actions = data[data_attr._AVAIL_ACTIONS.value][
-            :, rollout_timestep
-        ].unsqueeze(0)
-        actions = data[data_attr._ACTIONS.value][:, rollout_timestep].unsqueeze(0)
-
-        # prepare fed for the agent
-        feed = {
-            data_attr._OBS.value: observations,
-            data_attr._AVAIL_ACTIONS.value: avail_actions,
-            data_attr._ACTIONS.value: actions,
-        }
-
-        bs, time, n_agents, n_q_values = avail_actions.shape
-
-        t_multi_agent_q_vals = self.estimate_eval_q_vals(feed)
-        t_multi_agent_q_vals = t_multi_agent_q_vals.detach()
-
-        # n_agents X batch_size X n_q_vals
-        avail_actions = avail_actions.view(-1, n_agents, n_q_values)
-
-        decided_actions = (
-            self._policy.decide_actions_greedily(
-                t_multi_agent_q_vals, avail_actions, env_timestep
-            )
-            if evaluate
-            else self._policy.decide_actions_epsilon_greedily(
-                t_multi_agent_q_vals, avail_actions, env_timestep
-            )
-        )
-        return decided_actions.detach().numpy()
-
-    def estimate_q_vals(
-        self, feed: Dict[str, torch.Tensor], use_target: bool = False
-    ) -> torch.Tensor:
-        """either use eval or target net to estimate q values"""
-        multi_agent_q_vals = []
-        for agent in self._agents:
-            q_vals = (
-                agent.estimate_target_q(feed)
-                if use_target
-                else agent.estimate_eval_q(feed)
-            )
-
-            multi_agent_q_vals.append(q_vals)
-
-        # n_agents X batch_size X n_q_vals
-        t_multi_agent_q_vals = torch.stack(multi_agent_q_vals, dim=1)
-        return t_multi_agent_q_vals
-
-    def synchronize_target_net(self, tau: float = 1.0):
-        """Copy weights from eval net to target net using tau temperature.
-
-        For tau = 1.0, this performs a hard update.
-        For 0 < tau < 1.0, this performs a soft update.
-        """
-        for target_param, eval_param in zip(
-            self._target_drqn_network.parameters(), self._eval_drqn_network.parameters()
-        ):
-            target_param.data.copy_(
-                tau * eval_param.data + (1 - tau) * target_param.data
-            )
-
     def parameters(self) -> torch.Tensor:
         """return eval net optimization params"""
         return self._eval_drqn_network.parameters()
@@ -201,12 +126,15 @@ class MultiAgentCortex:
         self._eval_drqn_network.init_hidden_state(batch_size=batch_size)
         self._target_drqn_network.init_hidden_state(batch_size=batch_size)
 
-    # ---- ---- ---- ---- ---- #
-    # @ -> Partial Methods
-    # ---- ---- ---- ---- ---- #
+    def synchronize_target_net(self, tau: float = 1.0):
+        """Copy weights from eval net to target net using tau temperature.
 
-    infer_eps_greedy_actions = partialmethod(infer_actions, evaluate=False)
-    infer_greedy_actions = partialmethod(infer_actions, evaluate=True)
-
-    estimate_eval_q_vals = partialmethod(estimate_q_vals, use_target=False)
-    estimate_target_q_vals = partialmethod(estimate_q_vals, use_target=True)
+        For tau = 1.0, this performs a hard update.
+        For 0 < tau < 1.0, this performs a soft update.
+        """
+        for target_param, eval_param in zip(
+            self._target_drqn_network.parameters(), self._eval_drqn_network.parameters()
+        ):
+            target_param.data.copy_(
+                tau * eval_param.data + (1 - tau) * target_param.data
+            )

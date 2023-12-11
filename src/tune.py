@@ -9,7 +9,7 @@ from logger import TraceLogger
 from node import deserialize_configuration_node
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
-from tuner import CoreTuner
+from tuner import SyncTuner
 
 
 def delegate_tuner(
@@ -19,9 +19,9 @@ def delegate_tuner(
     trace_logger: Logger,
     *,
     seed: int
-) -> CoreTuner:
+) -> SyncTuner:
     """delegate tuner w.r.t passed configuration"""
-    tuner = CoreTuner(configuration)
+    tuner = SyncTuner(configuration)
     tuner.commit(
         environ_prefix=environ_prefix,
         accelerator=accelerator,
@@ -61,27 +61,37 @@ def start_wandb(cfg: DictConfig):
 @hydra.main(version_base=None, config_path="conf", config_name="trial")
 def runner(cfg: DictConfig) -> None:
     """execute trial"""
-    # TODO: add wandb support
-    # run = start_wandb(cfg)
-
     logger = get_logger()
     formatted_config = format_config_file(cfg)
     logger.info(formatted_config)
     trace_logger = TraceLogger(logger)
 
-    trainable_conf, trial_conf = deserialize_configuration_node(cfg)
+    trainable_conf, trial_conf, environ_conf = deserialize_configuration_node(cfg)
     runtime, device = access_trial_directives(trial_conf)
 
     accelerator = device.get("accelerator", "cpu")
     seed = device.get("seed", None)
-    tuner = delegate_tuner("3m", trainable_conf, accelerator, trace_logger, seed=seed)
+    environ_map = environ_conf.map.get("prefix", "3m")
 
-    n_rollouts = runtime.n_rollouts
+    tuner = delegate_tuner(
+        environ_map, trainable_conf, accelerator, trace_logger, seed=seed
+    )
+
+    n_timesteps = runtime.n_timesteps
     eval_schedule = runtime.eval_schedule
     checkpoint_freq = runtime.checkpoint_frequency
     eval_n_games = runtime.n_games
+    display_freq = runtime.display_freq
+    batch_size = trainable_conf.buffer.batch_size
 
-    tuner.optimize(n_rollouts, eval_schedule, checkpoint_freq, eval_n_games)
+    tuner.optimize(
+        n_timesteps,
+        batch_size,
+        eval_schedule,
+        checkpoint_freq,
+        eval_n_games,
+        display_freq,
+    )
 
 
 if __name__ == "__main__":

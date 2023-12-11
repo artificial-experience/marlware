@@ -173,3 +173,6 @@ __MACOSX/*
 
 # SC2 files
 StarCraftII/
+
+# Replays
+replays/*

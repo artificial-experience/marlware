@@ -15,8 +15,10 @@ class TraceLogger:
 
     def _initialize_placeholders(self):
         """Initialize placeholders for stats."""
+        self._stats["timesteps_passed"].append((0, 0))
         self._stats["eval_score_mean"].append((0, 0.0))
         self._stats["eval_score_running_mean"].append((0, 0.0))
+        self._stats["eval_won_battles_mean"].append((0, 0.0))
         self._stats["eval_score_std"].append((0, float("inf")))
         self._stats["eval_score_var"].append((0, float("inf")))
 
@@ -49,12 +51,12 @@ class TraceLogger:
             if isinstance(latest_value, torch.Tensor):
                 latest_value = latest_value.item()  # Convert tensors to numbers
             value_str = (
-                f"{latest_value:>10.4f}"
+                f"{latest_value:>10.3f}"
                 if isinstance(latest_value, (float, int))
                 else str(latest_value)
             )
             lines.append(
-                f"| {stat.ljust(max_stat_len)} | {str(latest_episode).rjust(8)} | {value_str:>10} |"
+                f"| {stat.ljust(max_stat_len)} | {str(latest_episode).rjust(8)} | {value_str:>11} |"
             )
 
         # Add the closing separator
