@@ -6,7 +6,7 @@ from typing import Optional
 import numpy as np
 from omegaconf import OmegaConf
 
-from src.cortex import MultiAgentCortex
+from src.cortex import RecQCortex
 from src.environ.starcraft import SC2Environ
 from src.memory.replay import EpisodeBatch
 
@@ -26,7 +26,7 @@ class CoreEvaluator:
         self._episode_limit = None
 
     def ensemble_evaluator(
-        self, env: SC2Environ, env_info: dict, cortex: MultiAgentCortex, logger: Logger
+        self, env: SC2Environ, env_info: dict, cortex: RecQCortex, logger: Logger
     ) -> None:
         """instantiate internal states"""
         self._performance = []

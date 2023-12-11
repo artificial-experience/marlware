@@ -56,7 +56,8 @@ class _CortexKey(Enum):
 class _TunerKey(Enum):
     """configuraiton attribute keys for tuner"""
 
-    pass
+    _BATCH_SIZE = "batch_size"
+    _MEM_SIZE = "mem_size"
 
 
 class _LoggerKey(Enum):

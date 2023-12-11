@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "marl-engineering"
+name = "marlverse"
 version = "0.1.0"
 description = ""
 authors = ["Sithael <james@marl.engineering>"]

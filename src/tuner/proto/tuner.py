@@ -10,7 +10,8 @@ from omegaconf import OmegaConf
 from torchviz import make_dot
 
 from src import trainable
-from src.cortex import MultiAgentCortex
+from src.abstract import ProtoTuner
+from src.cortex import RecQCortex
 from src.environ.starcraft import SC2Environ
 from src.evaluator import CoreEvaluator
 from src.memory.replay import ReplayBuffer
@@ -22,7 +23,7 @@ from src.util import methods
 from src.util.constants import AttrKey
 
 
-class CoreTuner:
+class ProtoTuner(ProtoTuner):
     """
     Abstraction class meant to delegate certain trainable for optimization
     Based on conf and registry the trainable is instantiated
@@ -69,7 +70,13 @@ class CoreTuner:
         self._evaluator = None
 
     def _integrate_trainable(
-        self, trainable: str, env_info: dict, gamma: float, seed: int
+        self,
+        trainable: str,
+        n_agents: int,
+        obs_shape: tuple,
+        state_shape: tuple,
+        gamma: float,
+        seed: int,
     ) -> trainable.Trainable:
         """check for registered trainable and integrate chosen one"""
         registered_trainables = trainable_global_registry.get_registered()
@@ -82,32 +89,32 @@ class CoreTuner:
         trainable = trainable_global_registry.get(trainable)(
             trainable_hypernet_conf, trainable_mixer_conf
         )
-        n_agents = env_info.get("n_agents", None)
-        obs_dim = env_info.get("obs_shape", None)
-        state_dim = env_info.get("state_shape", None)
         trainable.ensemble_trainable(
             n_agents=n_agents,
-            observation_dim=obs_dim,
-            state_dim=state_dim,
+            observation_dim=obs_shape,
+            state_dim=state_shape,
             gamma=gamma,
             seed=seed,
         )
         return trainable
 
     def _integrate_multi_agent_cortex(
-        self, model_conf: OmegaConf, exp_conf: OmegaConf, env_info: dict, seed: int
-    ) -> MultiAgentCortex:
+        self,
+        model_conf: OmegaConf,
+        exp_conf: OmegaConf,
+        n_agents: int,
+        n_actions: int,
+        obs_dim: tuple,
+        seed: int,
+    ) -> RecQCortex:
         """create multi-agent cortex for N agents"""
-        n_agents = env_info.get("n_agents", None)
-        n_actions = env_info.get("n_actions", None)
-        obs_dim = env_info.get("obs_shape", None)
-        mac = MultiAgentCortex(model_conf, exp_conf)
+        mac = RecQCortex(model_conf, exp_conf)
         mac.ensemble_cortex(n_agents, n_actions, obs_dim, seed=seed)
         return mac
 
     def _integrate_memory(
         self,
-        memory_conf: OmegaConf,
+        mem_size: int,
         scheme: dict,
         groups: dict,
         max_seq_length: int,
@@ -116,11 +123,10 @@ class CoreTuner:
         seed: int,
     ) -> ReplayBuffer:
         """create instance of replay memory based on environ info and memory conf"""
-        batch_size = memory_conf.get("batch_size", None)
         memory = ReplayBuffer(
             scheme=scheme,
             groups=groups,
-            buffer_size=batch_size,
+            buffer_size=mem_size,
             max_seq_length=max_seq_length + 1,
             preprocess=preprocess,
             device=accelerator,
@@ -146,7 +152,7 @@ class CoreTuner:
         return env, env_info
 
     def _integrate_evaluator(
-        self, env: SC2Environ, env_info: dict, cortex: MultiAgentCortex, logger: Logger
+        self, env: SC2Environ, env_info: dict, cortex: RecQCortex, logger: Logger
     ) -> CoreEvaluator:
         """create evaluator instance"""
         evaluator = CoreEvaluator()
@@ -194,13 +200,26 @@ class CoreTuner:
         self._environ, self._environ_info = self._integrate_environ(environ_prefix)
 
         # ---- ---- ---- ---- ---- #
+        # @ -> Access Attr Keys
+        # ---- ---- ---- ---- ---- #
+
+        data_attr = AttrKey.data
+        env_attr = AttrKey.env
+        tuner_attr = AttrKey.tuner
+
+        n_agents = self._environ_info[env_attr._N_AGENTS.value]
+        n_actions = self._environ_info[env_attr._N_ACTIONS.value]
+        obs_shape = self._environ_info[env_attr._OBS_SHAPE.value]
+        state_shape = self._environ_info[env_attr._STATE_SHAPE.value]
+
+        # ---- ---- ---- ---- ---- #
         # @ -> Integrate Trainable
         # ---- ---- ---- ---- ---- #
 
         gamma = self._conf.learner.training.gamma
         trainable: str = self._conf.trainable.construct.impl
         self._trainable: trainable.Trainable = self._integrate_trainable(
-            trainable, self._environ_info, gamma, seed
+            trainable, n_agents, obs_shape, state_shape, gamma, seed
         )
 
         # ---- ---- ---- ---- ---- #
@@ -210,7 +229,7 @@ class CoreTuner:
         model_conf = self._conf.learner.model
         exp_conf = self._conf.learner.exploration
         self._mac = self._integrate_multi_agent_cortex(
-            model_conf, exp_conf, self._environ_info, seed
+            model_conf, exp_conf, n_agents, n_actions, obs_shape, seed
         )
 
         # ---- ---- ---- ---- ---- #
@@ -253,9 +272,6 @@ class CoreTuner:
         # ---- ---- ---- ---- ---- #
         # @ -> Prepare Blueprint
         # ---- ---- ---- ---- ---- #
-
-        data_attr = AttrKey.data
-        env_attr = AttrKey.env
 
         state_shape = self._environ_info[env_attr._STATE_SHAPE.value]
         obs_shape = self._environ_info[env_attr._OBS_SHAPE.value]
@@ -307,9 +323,9 @@ class CoreTuner:
         # @ -> Integrate Memory
         # ---- ---- ---- ---- ---- #
 
-        memory_conf = self._conf.buffer
+        mem_size = self._conf.buffer[tuner_attr._MEM_SIZE.value]
         self._memory = self._integrate_memory(
-            memory_conf,
+            mem_size,
             scheme,
             groups,
             max_seq_length,
@@ -349,185 +365,8 @@ class CoreTuner:
         self._mac.synchronize_target_net()
 
     # --------------------------------------------------
-    # @ -> Tuner optimization mechanizm
+    # @ -> Methods for saving and loading models
     # --------------------------------------------------
-
-    def optimize(
-        self,
-        n_rollouts: int,
-        eval_schedule: int,
-        checkpoint_freq: int,
-        eval_n_games: int,
-        display_freq: int = 100,
-        timesteps_max: int = 10_000_000,
-        batch_size: int = 32,
-    ) -> np.ndarray:
-        """optimize trainable within N rollouts"""
-        rollout = 0
-        while self._trajectory_worker.t_env <= timesteps_max:
-            # ---- ---- ---- ---- ---- #
-            # @ -> Synchronize Nets
-            # ---- ---- ---- ---- ---- #
-
-            if rollout % self._target_net_update_sched == 0:
-                self._synchronize_target_nets()
-
-            # ---- ---- ---- ---- ---- #
-            # @ -> Evaluate Performance
-            # ---- ---- ---- ---- ---- #
-
-            if rollout % eval_schedule == 0:
-                self._evaluator.evaluate(rollout=rollout, n_games=eval_n_games)
-
-            # ---- ---- ---- ---- ---- #
-            # @ -> Gather Rollouts
-            # ---- ---- ---- ---- ---- #
-
-            # Run for a whole episode at a time
-            with torch.no_grad():
-                episode_batch = self._trajectory_worker.run()
-                self._memory.insert_episode_batch(episode_batch)
-
-            if self._memory.can_sample(batch_size):
-                episode_sample = self._memory.sample(batch_size)
-
-                # Truncate batch to only filled timesteps
-                max_ep_t = episode_sample.max_t_filled()
-                episode_sample = episode_sample[:, :max_ep_t]
-
-                if episode_sample.device != self._accelerator:
-                    episode_sample.to(self._accelerator)
-
-                # ---- ---- ---- ---- ---- #
-                # @ -> Calculate Q-Vals
-                # ---- ---- ---- ---- ---- #
-
-                # initialize hidden states of network
-                self._mac.init_hidden(batch_size=batch_size)
-
-                timewise_eval_estimates = []
-                timewise_target_estimates = []
-
-                max_seq_length = episode_sample.max_seq_length
-                for seq_t in range(max_seq_length):
-                    # timewise slices of episodes
-                    episode_time_slice = episode_sample[:, seq_t]
-
-                    eval_net_q_estimates = self._mac.estimate_eval_q_vals(
-                        feed=episode_time_slice
-                    )
-                    target_net_q_estimates = self._mac.estimate_target_q_vals(
-                        feed=episode_time_slice
-                    )
-
-                    # append timewise list with agent q estimates
-                    timewise_eval_estimates.append(eval_net_q_estimates)
-                    timewise_target_estimates.append(target_net_q_estimates)
-
-                # stack estimates timewise
-                t_timewise_eval_estimates = torch.stack(timewise_eval_estimates, dim=1)
-                t_timewise_target_estimates = torch.stack(
-                    timewise_target_estimates, dim=1
-                )
-
-                # ---- ---- ---- ---- ---- #
-                # @ -> Calculate Loss
-                # ---- ---- ---- ---- ---- #
-
-                # eval does not need last estimate
-                t_timewise_eval_estimates = t_timewise_eval_estimates[:, :-1]
-
-                # target does not need first estimate
-                t_timewise_target_estimates = t_timewise_target_estimates[:, 1:]
-
-                trainable_loss = self._trainable.calculate_loss(
-                    feed=episode_sample,
-                    eval_q_vals=t_timewise_eval_estimates,
-                    target_q_vals=t_timewise_target_estimates,
-                )
-                self._optimizer.zero_grad()
-                trainable_loss.backward()
-                grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self._params, self._grad_clip
-                )
-                self._optimizer.step()
-
-                self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
-                self._trace_logger.log_stat("gradient_norm", grad_norm, rollout)
-
-            # ---- ---- ---- ---- ---- #
-            # @ -> Log Stats
-            # ---- ---- ---- ---- ---- #
-
-            if rollout % display_freq == 0:
-                self._trace_logger.display_recent_stats()
-
-            # update episode counter ( works for synchronous training )
-            rollout += 1
-
-    # --------------------------------------------------
-    # @ -> Methods for saving models and debugging
-    # --------------------------------------------------
-
-    def draw_computational_graph(self, dummy_episode_sample) -> None:
-        """Draw computational graph using torchviz
-
-        Args:
-        dummy_episode_sample: A representative sample of the episode data.
-        """
-
-        # Ensure the dummy input is on the same device as the model
-        if dummy_episode_sample.device != self._accelerator:
-            dummy_episode_sample.to(self._accelerator)
-
-        # Initialize hidden states of network
-        self._mac.init_hidden(batch_size=dummy_episode_sample.batch_size)
-
-        timewise_eval_estimates = []
-        timewise_target_estimates = []
-        max_seq_length = dummy_episode_sample.max_seq_length
-
-        for seq_t in range(max_seq_length):
-            # Timewise slices of episodes
-            episode_time_slice = dummy_episode_sample[:, seq_t]
-
-            eval_net_q_estimates = self._mac.estimate_eval_q_vals(
-                feed=episode_time_slice
-            )
-            target_net_q_estimates = self._mac.estimate_target_q_vals(
-                feed=episode_time_slice
-            )
-
-            # Append timewise list with agent q estimates
-            timewise_eval_estimates.append(eval_net_q_estimates)
-            timewise_target_estimates.append(target_net_q_estimates)
-
-        # Stack estimates timewise
-        t_timewise_eval_estimates = torch.stack(timewise_eval_estimates, dim=1)
-        t_timewise_target_estimates = torch.stack(timewise_target_estimates, dim=1)
-
-        # Truncate to only filled timesteps
-        t_timewise_eval_estimates = t_timewise_eval_estimates[:, :-1]
-        t_timewise_target_estimates = t_timewise_target_estimates[:, 1:]
-
-        # Calculate loss
-        trainable_loss = self._trainable.calculate_loss(
-            feed=dummy_episode_sample,
-            eval_q_vals=t_timewise_eval_estimates,
-            target_q_vals=t_timewise_target_estimates,
-        )
-
-        # Manually assign names to parameters and collect them in a dictionary
-        all_parameters = chain(self._mac.parameters(), self._trainable.parameters())
-        named_parameters = {f"param_{i}": p for i, p in enumerate(all_parameters)}
-
-        # Generate the graph from the loss
-        graph = make_dot(
-            trainable_loss, params=named_parameters, show_attrs=True, show_saved=True
-        )
-
-        # Render the graph to a file
-        graph.render("computational_graph", format="png", cleanup=True)
 
     def save_models(self) -> bool:
         """save all models"""

@@ -13,7 +13,7 @@ hydra:
 defaults:
   - _self_
   - trainable: qmix
-  # - environ: sc2
+  - environ: sc2
 
   - override hydra/job_logging: custom
 
@@ -23,7 +23,8 @@ defaults:
 
 rollout:
   train:
-    n_rollouts: 90_000
+    n_timesteps: 4_000_000
+    display_freq: 400
   test:
     eval_schedule: 1_000
     checkpoint_frequency: 200

@@ -4,10 +4,11 @@ from dataclasses import field
 
 @dataclass
 class RuntimeConfig:
-    n_rollouts: int
+    n_timesteps: int
     eval_schedule: int
     checkpoint_frequency: int
     n_games: int
+    display_freq: int
 
 
 @dataclass
