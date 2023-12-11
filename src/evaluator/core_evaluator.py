@@ -11,6 +11,7 @@ from src.environ.starcraft import SC2Environ
 from src.memory.replay import EpisodeBatch
 
 
+# TODO: Refactor entire class
 class CoreEvaluator:
     def __init__(self) -> None:
         self._batch_size = 1
@@ -138,6 +139,10 @@ class CoreEvaluator:
             self._highest_battle_win_score, mean_won_battles
         )
 
+        is_new_best = True if (mean_score > self._best_score) else False
+        if is_new_best:
+            self._best_score = mean_score
+
         self.log_eval_score_stats(
             mean_score,
             self._performance,
@@ -146,10 +151,6 @@ class CoreEvaluator:
             self._best_score,
             self._highest_battle_win_score,
         )
-
-        is_new_best = True if (mean_score > self._best_score) else False
-        if is_new_best:
-            self._best_score = mean_score
 
         return is_new_best
 

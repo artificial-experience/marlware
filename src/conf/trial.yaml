@@ -24,7 +24,7 @@ defaults:
 rollout:
   train:
     n_timesteps: 4_000_000
-    display_freq: 400
+    display_freq: 200
   test:
     eval_schedule: 1_000
     checkpoint_frequency: 200
