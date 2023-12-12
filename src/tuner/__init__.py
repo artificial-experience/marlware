@@ -1,1 +1,1 @@
-from .core_tuner import CoreTuner
+from .sync_tuner import SyncTuner

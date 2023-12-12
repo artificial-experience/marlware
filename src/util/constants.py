@@ -3,10 +3,13 @@ from enum import Enum
 from pathlib import Path
 
 
-ROOT_DIR = Path(os.getenv("ROOT", ".")) / "src"
-RESULTS_DIR = ROOT_DIR / "results"
-CONF_DIR = ROOT_DIR / "conf"
-WEIGHTS_DIR = ROOT_DIR / "weights"
+ROOT_DIR = Path(os.getenv("ROOT", "."))
+SRC_DIR = ROOT_DIR / "src"
+RESULTS_DIR = ROOT_DIR / "outputs"
+REPLAY_DIR = RESULTS_DIR / "replays"
+MODEL_SAVE_DIR = RESULTS_DIR / "models"
+CONF_DIR = SRC_DIR / "conf"
+WEIGHTS_DIR = SRC_DIR / "weights"
 TRAINABLE_CONF_DIR = CONF_DIR / "trainable"
 
 
@@ -54,7 +57,8 @@ class _CortexKey(Enum):
 class _TunerKey(Enum):
     """configuraiton attribute keys for tuner"""
 
-    pass
+    _BATCH_SIZE = "batch_size"
+    _MEM_SIZE = "mem_size"
 
 
 class _LoggerKey(Enum):

@@ -1,1 +1,1 @@
-from .multiagent_cortex import MultiAgentCortex
+from .rec_q_cortex import RecQCortex

@@ -53,7 +53,7 @@ class LearnerConfig:
 
 @dataclass
 class BufferConfig:
-    max_size: int
+    mem_size: int
     batch_size: int
     prioritized: bool
     mode: str

@@ -65,10 +65,25 @@ def fill_trainable_config(conf: DictConfig) -> OmegaConf:
     return structured_conf
 
 
+def fill_env_config(conf: DictConfig) -> OmegaConf:
+    """structure environment configuration"""
+    map_dict_conf = conf["environ"]["map"]
+
+    map_config = container.MapConfig(**map_dict_conf)
+
+    structured_conf = OmegaConf.structured(
+        container.EnvironConfig(
+            map=map_config,
+        )
+    )
+    return structured_conf
+
+
 def deserialize_configuration_node(
     cfg: DictConfig,
 ) -> Tuple[container.TrainableConfig, container.TrialConfig]:
     """Serialize a DictConfig node to a YAML string."""
     trainable_conf = fill_trainable_config(cfg)
     trial_conf = fill_trial_config(cfg)
-    return trainable_conf, trial_conf
+    environ_conf = fill_env_config(cfg)
+    return trainable_conf, trial_conf, environ_conf
