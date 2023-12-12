@@ -19,7 +19,7 @@ def delegate_tuner(
     accelerator: str,
     trace_logger: Logger,
     *,
-    seed: int
+    seed: int,
 ) -> SyncTuner:
     """delegate tuner w.r.t passed configuration"""
     tuner = SyncTuner(configuration)

@@ -67,7 +67,7 @@ class ProtoCortex(ProtoCortex):
         n_actions: int,
         obs_shape: tuple,
         *,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
     ) -> None:
         """create heuristic, networks and ensemble N learners"""
         self._rnd_seed(seed=seed)
