@@ -31,7 +31,8 @@ class _DataKey(Enum):
     _GROUP = "group"
     _VALUE_SHAPE = "vshape"
     _DTYPE = "dtype"
-    _EP_CONST = "episode_const"
+    _MAX_EP_LEN = "_max_seq_length"
+    _TRANSFORMS = "transforms"
 
     # groups and transforms
     _AGENT_GROUP = "agents"

@@ -1,28 +1,23 @@
 import logging
 import os
 import random
-from itertools import chain
 from logging import Logger
-from pathlib import Path
-from typing import List
 from typing import Optional
 
 import numpy as np
 import torch
 from omegaconf import OmegaConf
-from torchviz import make_dot
 
 from src import trainable
 from src.abstract import ProtoTuner
 from src.cortex import RecQCortex
 from src.environ.starcraft import SC2Environ
 from src.evaluator import CoreEvaluator
-from src.memory.replay import ReplayBuffer
-from src.memory.worker import EpisodeRunner
+from src.memory.cluster import RolloutCluster
+from src.worker import InteractionWorker
 from src.registry import trainable_global_registry
 from src.transforms import OneHotTransform
 from src.util import constants
-from src.util import methods
 from src.util.constants import AttrKey
 
 
@@ -44,7 +39,7 @@ class ProtoTuner(ProtoTuner):
         :param [optimizer]: optimizer used to backward pass grads through eval nets
         :param [params]: eval nets parameters
         :param [grad_clip]: gradient clip to prevent exploding gradients and divergence
-        :param [trajectory_worker]: worker used to gather trajectories from environ
+        :param [interaction_worker]: worker used to gather trajectories from environ
 
     """
 
@@ -54,7 +49,7 @@ class ProtoTuner(ProtoTuner):
         # internal attrs
         self._trainable: trainable.Trainable = None
         self._mac = None
-        self._memory = None
+        self._memory_cluster = None
         self._environ = None
         self._environ_info = None
         self._trace_logger = None
@@ -67,7 +62,7 @@ class ProtoTuner(ProtoTuner):
         self._accelerator = "cpu"
 
         # trajectory worker
-        self._trajectory_worker = None
+        self._interaction_worker = None
 
         # evaluator
         self._evaluator = None
@@ -120,34 +115,29 @@ class ProtoTuner(ProtoTuner):
 
     def _integrate_memory(
         self,
-        mem_size: int,
-        scheme: dict,
-        groups: dict,
-        max_seq_length: int,
-        preprocess: dict,
+        memory_blueprint: dict,
+        max_rollouts_in_mem: int,
         accelerator: str,
         seed: int,
-    ) -> ReplayBuffer:
+    ) -> RolloutCluster:
         """create instance of replay memory based on environ info and memory conf"""
-        memory = ReplayBuffer(
-            scheme=scheme,
-            groups=groups,
-            buffer_size=mem_size,
-            max_seq_length=max_seq_length + 1,
-            preprocess=preprocess,
-            device=accelerator,
-        )
+        memory = RolloutCluster(memory_blueprint=memory_blueprint)
+        memory.ensemble_rollout_cluster(max_rollouts_in_mem=max_rollouts_in_mem, device=accelerator, seed=seed)
         return memory
 
     def _integrate_worker(
         self,
-        conf: OmegaConf,
-        logger: Logger,
         env: SC2Environ,
+        cortex:RecQCortex,
+        memory_blueprint: dict,
+        logger: Logger,
         env_info: dict,
-    ) -> EpisodeRunner:
+        memory_size: int,
+        accelerator: str
+    ) -> InteractionWorker:
         """create worker instance to be used for interaction with env"""
-        worker = EpisodeRunner(conf, logger, env, env_info)
+        worker = InteractionWorker()
+        worker.ensemble_interaction_worker(env=env, cortex=cortex, memory_blueprint=memory_blueprint, logger=logger, memory_size=memory_size, device=accelerator)
         return worker
 
     def _integrate_environ(self, map_name: str) -> SC2Environ:
@@ -332,17 +322,21 @@ class ProtoTuner(ProtoTuner):
             )
         }
 
+        memory_blueprint = {
+            data_attr._SCHEME.value: scheme,
+            data_attr._GROUP.value: groups,
+            data_attr._MAX_EP_LEN.value: max_seq_length,
+            data_attr._TRANSFORMS.value: preprocess,
+        }
+
         # ---- ---- ---- ---- ---- #
         # @ -> Integrate Memory
         # ---- ---- ---- ---- ---- #
 
         mem_size = self._conf.buffer[tuner_attr._MEM_SIZE.value]
-        self._memory = self._integrate_memory(
+        self._memory_cluster = self._integrate_memory(
+            memory_blueprint,
             mem_size,
-            scheme,
-            groups,
-            max_seq_length,
-            preprocess,
             self._accelerator,
             seed,
         )
@@ -351,29 +345,25 @@ class ProtoTuner(ProtoTuner):
         # @ -> Setup Worker
         # ---- ---- ---- ---- ---- #
 
-        worker_conf = self._conf.buffer
-        self._trajectory_worker = self._integrate_worker(
-            worker_conf, self._trace_logger, self._environ, self._environ_info
-        )
-        self._trajectory_worker.setup(
-            scheme, groups, preprocess, self._mac, self._accelerator
-        )
+        self._interaction_worker = self._integrate_worker(
+            self._environ, self._mac, memory_blueprint, self._trace_logger, self._environ_info,
+            1, self._accelerator)
 
         # ---- ---- ---- ---- ---- #
         # @ -> Integrate Evaluator
         # ---- ---- ---- ---- ---- #
 
-        self._evaluator = self._integrate_evaluator(
-            self._environ, self._environ_info, self._mac, self._trace_logger
-        )
-        replay_save_path = constants.REPLAY_DIR / self._run_identifier
-        self._evaluator.setup(
-            scheme,
-            groups,
-            preprocess,
-            self._accelerator,
-            replay_save_path,
-        )
+       # self._evaluator = self._integrate_evaluator(
+       #     self._environ, self._environ_info, self._mac, self._trace_logger
+       # )
+       # replay_save_path = constants.REPLAY_DIR / self._run_identifier
+       # self._evaluator.setup(
+       #     scheme,
+       #     groups,
+       #     preprocess,
+       #     self._accelerator,
+       #     replay_save_path,
+       # )
 
     def _synchronize_target_nets(self):
         """synchronize target networks inside cortex and trainable"""

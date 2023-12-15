@@ -24,7 +24,7 @@ class SyncTuner(ProtoTuner):
         :param [optimizer]: optimizer used to backward pass grads through eval nets
         :param [params]: eval nets parameters
         :param [grad_clip]: gradient clip to prevent exploding gradients and divergence
-        :param [trajectory_worker]: worker used to gather trajectories from environ
+        :param [interaction_worker]: worker used to gather trajectories from environ
 
     """
 
@@ -58,7 +58,8 @@ class SyncTuner(ProtoTuner):
     ) -> np.ndarray:
         """optimize trainable within N rollouts"""
         rollout = 0
-        while self._trajectory_worker.t_env <= n_timesteps:
+        while self._interaction_worker.environ_timesteps <= n_timesteps:
+
             # ---- ---- ---- ---- ---- #
             # @ -> Synchronize Nets
             # ---- ---- ---- ---- ---- #
@@ -70,7 +71,8 @@ class SyncTuner(ProtoTuner):
             # @ -> Evaluate Performance
             # ---- ---- ---- ---- ---- #
 
-            if rollout % eval_schedule == 0:
+            #if rollout % eval_schedule == 0:
+            if False:
                 is_new_best = self._evaluator.evaluate(
                     rollout=rollout, n_games=eval_n_games
                 )
@@ -85,18 +87,17 @@ class SyncTuner(ProtoTuner):
 
             # Run for a whole episode at a time
             with torch.no_grad():
-                episode_batch = self._trajectory_worker.run()
-                self._memory.insert_episode_batch(episode_batch)
+                rollout = self._interaction_worker.collect_rollout(test_mode=False)
+                self._memory_cluster.insert_episode_batch(rollout)
 
-            if self._memory.can_sample(batch_size):
-                episode_sample = self._memory.sample(batch_size)
+            if self._memory_cluster.can_sample(batch_size):
+                episode_sample = self._memory_cluster.sample(batch_size)
 
                 # Truncate batch to only filled timesteps
                 max_ep_t = episode_sample.max_t_filled()
                 episode_sample = episode_sample[:, :max_ep_t]
 
-                if episode_sample.device != self._accelerator:
-                    episode_sample.to(self._accelerator)
+                episode_sample.override_data_device(self._accelerator)
 
                 # ---- ---- ---- ---- ---- #
                 # @ -> Calculate Q-Vals
@@ -108,8 +109,7 @@ class SyncTuner(ProtoTuner):
                 timewise_eval_estimates = []
                 timewise_target_estimates = []
 
-                max_seq_length = episode_sample.max_seq_length
-                for seq_t in range(max_seq_length):
+                for seq_t in range(max_ep_t):
                     # timewise slices of episodes
                     episode_time_slice = episode_sample[:, seq_t]
 
@@ -153,7 +153,7 @@ class SyncTuner(ProtoTuner):
                 self._optimizer.step()
 
                 self._trace_logger.log_stat(
-                    "timesteps_passed", self._trajectory_worker.t_env, rollout
+                    "timesteps_passed", self._interaction_worker.environ_timesteps, rollout
                 )
                 self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
                 self._trace_logger.log_stat("gradient_norm", grad_norm, rollout)
