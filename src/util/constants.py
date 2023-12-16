@@ -31,7 +31,7 @@ class _DataKey(Enum):
     _GROUP = "group"
     _VALUE_SHAPE = "vshape"
     _DTYPE = "dtype"
-    _MAX_EP_LEN = "_max_seq_length"
+    _MAX_SEQ_LEN = "_max_seq_length"
     _TRANSFORMS = "transforms"
 
     # groups and transforms

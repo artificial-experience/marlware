@@ -1,14 +1,13 @@
 from logging import Logger
 from typing import Optional
 
-import numpy as np
 import torch
 from omegaconf import OmegaConf
 
 from .proto import ProtoTuner
 
 
-class SyncTuner(ProtoTuner):
+class Tuner(ProtoTuner):
     """
     Synchronous tuner class meant to optimize trainable w.r.t objective function
 
@@ -44,7 +43,7 @@ class SyncTuner(ProtoTuner):
         super().commit(environ_prefix, accelerator, logger, run_id, seed=seed)
 
     # --------------------------------------------------
-    # @ -> Tuner optimization mechanizm
+    # @ -> Tuner optimization mechanism
     # --------------------------------------------------
 
     def optimize(
@@ -52,14 +51,12 @@ class SyncTuner(ProtoTuner):
         n_timesteps: int,
         batch_size: int,
         eval_schedule: int,
-        checkpoint_freq: int,
         eval_n_games: int,
         display_freq: int,
-    ) -> np.ndarray:
+    ) -> None:
         """optimize trainable within N rollouts"""
         rollout = 0
         while self._interaction_worker.environ_timesteps <= n_timesteps:
-
             # ---- ---- ---- ---- ---- #
             # @ -> Synchronize Nets
             # ---- ---- ---- ---- ---- #
@@ -71,15 +68,9 @@ class SyncTuner(ProtoTuner):
             # @ -> Evaluate Performance
             # ---- ---- ---- ---- ---- #
 
-            #if rollout % eval_schedule == 0:
-            if False:
-                is_new_best = self._evaluator.evaluate(
-                    rollout=rollout, n_games=eval_n_games
-                )
-
-                if is_new_best:
-                    model_identifier = "best_model.pt"
-                    self.save_models(model_identifier)
+            # TODO: 1. define evaluation logic
+            if rollout % eval_schedule == 0:
+                pass
 
             # ---- ---- ---- ---- ---- #
             # @ -> Gather Rollouts
@@ -153,7 +144,9 @@ class SyncTuner(ProtoTuner):
                 self._optimizer.step()
 
                 self._trace_logger.log_stat(
-                    "timesteps_passed", self._interaction_worker.environ_timesteps, rollout
+                    "timesteps_passed",
+                    self._interaction_worker.environ_timesteps,
+                    rollout,
                 )
                 self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
                 self._trace_logger.log_stat("gradient_norm", grad_norm, rollout)

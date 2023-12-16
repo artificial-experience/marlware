@@ -1,1 +1,1 @@
-from .rollout_cluster import RolloutCluster
+from .memory_cluster import MemoryCluster
