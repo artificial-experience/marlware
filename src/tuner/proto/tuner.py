@@ -318,7 +318,7 @@ class ProtoTuner(ProtoTuner):
         groups = {data_attr._AGENT_GROUP.value: n_agents}
 
         # prepare preprocessing blueprint
-        preprocess = {
+        transforms = {
             data_attr._ACTIONS.value: (
                 data_attr._ACTIONS_ONEHOT_TRANSFORM.value,
                 [OneHotTransform(out_dim=n_actions)],
@@ -329,7 +329,7 @@ class ProtoTuner(ProtoTuner):
             data_attr._SCHEME.value: scheme,
             data_attr._GROUP.value: groups,
             data_attr._MAX_SEQ_LEN.value: max_seq_length,
-            data_attr._TRANSFORMS.value: preprocess,
+            data_attr._TRANSFORMS.value: transforms,
         }
 
         # ---- ---- ---- ---- ---- #

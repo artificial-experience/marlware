@@ -1,15 +1,18 @@
-import random
 from logging import Logger
 from typing import Optional
 
-import numpy as np
-import torch
-from omegaconf import OmegaConf
+import ray
 from smac.env import StarCraft2Env
 
 from src.cortex import RecQCortex
-from src.memory.rollout import RolloutMemory
+from src.memory.shard import MemoryShard
 from src.util.constants import AttrKey
+
+
+"""
+TODO: enable when integrating with ray
+@ray.remote
+"""
 
 
 class InteractionWorker:
@@ -56,16 +59,16 @@ class InteractionWorker:
         """set counter to 0, reset env and create new rollout memory"""
         self._episode_ts = 0
 
-        new_rollout_mem = RolloutMemory(memory_blueprint=self._memory_blueprint)
-        new_rollout_mem.ensemble_rollout_memory(device=self._device)
+        new_mem_shard = MemoryShard(memory_blueprint=self._memory_blueprint)
+        new_mem_shard.ensemble_memory_shard(device=self._device)
 
         self._env.reset()
 
-        return new_rollout_mem
+        return new_mem_shard
 
-    def collect_rollout(self, test_mode: bool = False) -> RolloutMemory:
+    def collect_rollout(self, test_mode: bool = False) -> MemoryShard:
         """collect single episode of data and store in cache"""
-        rollout_mem = self.reset()
+        memory_shard = self.reset()
 
         terminated = False
         episode_return = 0
@@ -81,10 +84,10 @@ class InteractionWorker:
             }
 
             # update at timestep t
-            rollout_mem.update(pre_transition_data, time_slice=self._episode_ts)
+            memory_shard.update(pre_transition_data, time_slice=self._episode_ts)
 
             actions = self._cortex.infer_eps_greedy_actions(
-                data=rollout_mem,
+                data=memory_shard,
                 rollout_timestep=self._episode_ts,
                 env_timestep=self._env_ts,
             )
@@ -101,7 +104,7 @@ class InteractionWorker:
             }
 
             # update at timestep t
-            rollout_mem.update(post_transition_data, time_slice=self._episode_ts)
+            memory_shard.update(post_transition_data, time_slice=self._episode_ts)
 
             episode_return += reward
             self._episode_ts += 1
@@ -114,10 +117,10 @@ class InteractionWorker:
             self._data_attr._OBS.value: [self._env.get_obs()],
         }
 
-        rollout_mem.update(termination_data, time_slice=self._episode_ts)
+        memory_shard.update(termination_data, time_slice=self._episode_ts)
 
         actions = self._cortex.infer_eps_greedy_actions(
-            data=rollout_mem,
+            data=memory_shard,
             rollout_timestep=self._episode_ts,
             env_timestep=self._env_ts,
         )
@@ -126,9 +129,9 @@ class InteractionWorker:
             self._data_attr._ACTIONS.value: actions,
         }
 
-        rollout_mem.update(post_termination_data, time_slice=self._episode_ts)
+        memory_shard.update(post_termination_data, time_slice=self._episode_ts)
 
-        return rollout_mem
+        return memory_shard
 
     @property
     def environ_timesteps(self):
