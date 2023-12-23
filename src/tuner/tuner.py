@@ -78,8 +78,8 @@ class Tuner(ProtoTuner):
 
             # Run for a whole episode at a time
             with torch.no_grad():
-                rollout = self._interaction_worker.collect_rollout(test_mode=False)
-                self._memory_cluster.insert_episode_batch(rollout)
+                memory_shard = self._interaction_worker.collect_rollout(test_mode=False)
+                self._memory_cluster.insert_memory_shard(memory_shard)
 
             if self._memory_cluster.can_sample(batch_size):
                 episode_sample = self._memory_cluster.sample(batch_size)

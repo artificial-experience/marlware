@@ -60,6 +60,7 @@ class _TunerKey(Enum):
 
     _BATCH_SIZE = "batch_size"
     _MEM_SIZE = "mem_size"
+    _SAMPLING_METHOD = "mode"
 
 
 class _LoggerKey(Enum):

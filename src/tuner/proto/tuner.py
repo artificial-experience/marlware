@@ -118,11 +118,16 @@ class ProtoTuner(ProtoTuner):
 
     def _integrate_memory(
         self,
+        mem_size: int,
+        sampling_method: str,
         accelerator: str,
         seed: int,
     ) -> MemoryCluster:
         """create instance of replay memory based on environ info and memory conf"""
-        memory = MemoryCluster()
+        memory = MemoryCluster(mem_size)
+        memory.ensemble_memory_cluster(
+            device=accelerator, sampling_method=sampling_method, seed=seed
+        )
         return memory
 
     def _integrate_worker(
@@ -337,7 +342,10 @@ class ProtoTuner(ProtoTuner):
         # ---- ---- ---- ---- ---- #
 
         mem_size = self._conf.buffer[tuner_attr._MEM_SIZE.value]
+        sampling_method = self._conf.buffer[tuner_attr._SAMPLING_METHOD.value]
         self._memory_cluster = self._integrate_memory(
+            mem_size,
+            sampling_method,
             self._accelerator,
             seed,
         )
