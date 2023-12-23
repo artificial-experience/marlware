@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from typing import Optional
+from typing import Tuple
 
 import numpy as np
 import torch
@@ -118,9 +119,17 @@ class ProtoMemory:
                 (self._max_seq_length, *shape), dtype=dtype, device=self._device
             )
 
-    def _decode_time_slice(self, item):
+    def _decode_time_slice(self, item: Tuple[slice, int]):
         """decode information about time slice"""
-        pass
+        decoded = []
+        # Ensure item is a list
+        assert not isinstance(item, list), "Time slice must be contiguous"
+        if isinstance(item, int):
+            slice_it = slice(item, item + 1)
+            decoded.append(slice_it)
+        else:
+            decoded.append(item)
+        return decoded
 
     def _new_data_namespace(self):
         """create new data simple namespace"""
@@ -135,6 +144,18 @@ class ProtoMemory:
         elif isinstance(indexing_item, slice):
             _range = indexing_item.indices(max_size)
             return 1 + (_range[1] - _range[0] - 1) // _range[2]
+
+    def _check_safe_view(self, v, dest):
+        """check whether its safe to reshape tensor v w.r.t dest shape"""
+        idx = len(v.shape) - 1
+        for s in dest.shape[::-1]:
+            if v.shape[idx] != s:
+                if s != 1:
+                    raise ValueError(
+                        f"Unsafe reshape of {v.shape} to {dest.shape}"
+                    )
+            else:
+                idx -= 1
 
     def __repr__(self):
         return "Memory. Max_seq_len:{} Scheme:{} Groups:{}".format(

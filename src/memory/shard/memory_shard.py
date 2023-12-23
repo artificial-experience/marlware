@@ -58,10 +58,31 @@ class MemoryShard(ProtoMemory):
             memory_shard.ensemble_memory_shard(data=new_data, device=self._device)
             return memory_shard
 
-    def update(self, data: dict, time_slice: slice) -> None:
+    def update(self, data: dict, time_slice: slice, mark_filled=True) -> None:
         """update internal data namespace with new data"""
-        for attr_key, attr_valule in data.items():
+        time_slice = self._decode_time_slice(time_slice)
+        for attr_key, attr_value in data.items():
             if attr_key in self._data.transition_data:
                 target = self._data.transition_data
+                if mark_filled:
+                    target[self._data_attr._FILLED.value][time_slice] = 1
+                    mark_fileld = False
+                _time_slice = time_slice
             else:
-                raise KeyError(f"{k} not found in transition or episode data")
+                raise KeyError(f"{attr_key} not found in transition data")
+
+            dtype = self._scheme[attr_key].get(
+                self._data_attr._DTYPE.value, torch.float32
+            )
+            value = torch.tensor(attr_value, dtype=dtype, device=self._device)
+            self._check_safe_view(value, target[attr_key][_time_slice])
+            target[attr_key][_time_slice] = value.view_as(target[attr_key][_time_slice])
+
+            if attr_key in self._transforms:
+                new_attr_key = self._transforms[attr_key][0]
+                value = target[attr_key][_time_slice]
+                for transform in self._transforms[attr_key][1]:
+                    value = transform.transform(value)
+                target[new_attr_key][_time_slice] = value.view_as(
+                    target[new_attr_key][_time_slice]
+                )
