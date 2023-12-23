@@ -122,7 +122,6 @@ class ProtoMemory:
     def _decode_time_slice(self, item: Tuple[slice, int]):
         """decode information about time slice"""
         decoded = []
-        # Ensure item is a list
         assert not isinstance(item, list), "Time slice must be contiguous"
         if isinstance(item, int):
             slice_it = slice(item, item + 1)
@@ -151,9 +150,7 @@ class ProtoMemory:
         for s in dest.shape[::-1]:
             if v.shape[idx] != s:
                 if s != 1:
-                    raise ValueError(
-                        f"Unsafe reshape of {v.shape} to {dest.shape}"
-                    )
+                    raise ValueError(f"Unsafe reshape of {v.shape} to {dest.shape}")
             else:
                 idx -= 1
 

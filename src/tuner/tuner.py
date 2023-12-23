@@ -82,13 +82,13 @@ class Tuner(ProtoTuner):
                 self._memory_cluster.insert_memory_shard(memory_shard)
 
             if self._memory_cluster.can_sample(batch_size):
-                episode_sample = self._memory_cluster.sample(batch_size)
+                shard_cluster = self._memory_cluster.sample(batch_size)
 
                 # Truncate batch to only filled timesteps
-                max_ep_t = episode_sample.max_t_filled()
-                episode_sample = episode_sample[:, :max_ep_t]
+                max_ep_t = shard_cluster.max_t_filled()
+                shard_cluster = shard_cluster[:, :max_ep_t]
 
-                episode_sample.override_data_device(self._accelerator)
+                shard_cluster.override_data_device(self._accelerator)
 
                 # ---- ---- ---- ---- ---- #
                 # @ -> Calculate Q-Vals
@@ -102,7 +102,7 @@ class Tuner(ProtoTuner):
 
                 for seq_t in range(max_ep_t):
                     # timewise slices of episodes
-                    episode_time_slice = episode_sample[:, seq_t]
+                    episode_time_slice = shard_cluster[:, seq_t]
 
                     eval_net_q_estimates = self._mac.estimate_eval_q_vals(
                         feed=episode_time_slice
@@ -132,7 +132,7 @@ class Tuner(ProtoTuner):
                 t_timewise_target_estimates = t_timewise_target_estimates[:, 1:]
 
                 trainable_loss = self._trainable.calculate_loss(
-                    feed=episode_sample,
+                    feed=shard_cluster,
                     eval_q_vals=t_timewise_eval_estimates,
                     target_q_vals=t_timewise_target_estimates,
                 )

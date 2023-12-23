@@ -35,28 +35,10 @@ class MemoryShard(ProtoMemory):
         """fill data simple namespace with attributes needed for batch creation"""
         super().ensemble_memory(data=data, device=device)
 
-    def __getitem__(self, item):
-        """either return concrete data or slice w.r.t time and return"""
-        # 1. item is string (e.g. "state")
-        if isinstance(item, str):
-            if item in self._data.transition_data:
-                return self._data.transition_data[item]
-        # 2. item is time slice (e.g. (1,2,None))
-        else:
-            time_slice = self._decode_time_slice(item)
-            new_data = self._new_data_namespace()
-            for k, v in self._data.transition_data.items():
-                new_data.transition_data[k] = v[time_slice]
-
-            # recalculate max_seq_length param
-            max_time = self._measure_slice_extent(time_slice, self._max_seq_length)
-
-            # create new MemoryShard instance
-            memory_blueprint = self._memory_blueprint.copy()
-            memory_blueprint[self._data_attr._MAX_SEQ_LEN.value] = max_time
-            memory_shard = MemoryShard(memory_blueprint)
-            memory_shard.ensemble_memory_shard(data=new_data, device=self._device)
-            return memory_shard
+    def move_to_device(self, device: Optional[str] = "cpu") -> None:
+        """move data to device"""
+        for k, v in self._data.transition_data.items():
+            self._data.transition_data[k] = v.to(device)
 
     def update(self, data: dict, time_slice: slice, mark_filled=True) -> None:
         """update internal data namespace with new data"""
@@ -86,3 +68,26 @@ class MemoryShard(ProtoMemory):
                 target[new_attr_key][_time_slice] = value.view_as(
                     target[new_attr_key][_time_slice]
                 )
+
+    def __getitem__(self, item):
+        """either return concrete data or slice w.r.t time and return"""
+        # 1. item is string (e.g. "state")
+        if isinstance(item, str):
+            if item in self._data.transition_data:
+                return self._data.transition_data[item]
+        # 2. item is time slice (e.g. (1,2,None))
+        else:
+            time_slice = self._decode_time_slice(item)
+            new_data = self._new_data_namespace()
+            for k, v in self._data.transition_data.items():
+                new_data.transition_data[k] = v[time_slice]
+
+            # recalculate max_seq_length param
+            max_time = self._measure_slice_extent(time_slice, self._max_seq_length)
+
+            # create new MemoryShard instance
+            memory_blueprint = self._memory_blueprint.copy()
+            memory_blueprint[self._data_attr._MAX_SEQ_LEN.value] = max_time
+            memory_shard = MemoryShard(memory_blueprint)
+            memory_shard.ensemble_memory_shard(data=new_data, device=self._device)
+            return memory_shard
