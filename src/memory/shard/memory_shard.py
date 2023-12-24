@@ -48,7 +48,7 @@ class MemoryShard(ProtoMemory):
                 target = self._data.transition_data
                 if mark_filled:
                     target[self._data_attr._FILLED.value][time_slice] = 1
-                    mark_fileld = False
+                    mark_filled = False
                 _time_slice = time_slice
             else:
                 raise KeyError(f"{attr_key} not found in transition data")
