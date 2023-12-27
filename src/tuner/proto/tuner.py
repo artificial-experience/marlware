@@ -157,7 +157,13 @@ class ProtoTuner(ProtoTuner):
         assert env is not None, "Environment cound not be created"
         return env, env_info
 
-    def _integrate_evaluator(self, env: SC2Environ, worker: InteractionWorker, logger: Logger, replay_save_dir: Path) -> CoreEvaluator:
+    def _integrate_evaluator(
+        self,
+        env: SC2Environ,
+        worker: InteractionWorker,
+        logger: Logger,
+        replay_save_dir: Path,
+    ) -> CoreEvaluator:
         """create evaluator instance"""
         evaluator = CoreEvaluator(env, worker, logger)
         evaluator.ensemble_evaluator(replay_save_dir)
@@ -369,7 +375,12 @@ class ProtoTuner(ProtoTuner):
         # ---- ---- ---- ---- ---- #
 
         replay_save_path = constants.REPLAY_DIR / self._run_identifier
-        self._evaluator = self._integrate_evaluator(self._environ, self._interaction_worker, self._trace_logger, replay_save_path)
+        self._evaluator = self._integrate_evaluator(
+            self._environ,
+            self._interaction_worker,
+            self._trace_logger,
+            replay_save_path,
+        )
 
     def _synchronize_target_nets(self):
         """synchronize target networks inside cortex and trainable"""
