@@ -1,14 +1,13 @@
 from logging import Logger
 from typing import Optional
 
-import numpy as np
 import torch
 from omegaconf import OmegaConf
 
 from .proto import ProtoTuner
 
 
-class SyncTuner(ProtoTuner):
+class Tuner(ProtoTuner):
     """
     Synchronous tuner class meant to optimize trainable w.r.t objective function
 
@@ -24,7 +23,7 @@ class SyncTuner(ProtoTuner):
         :param [optimizer]: optimizer used to backward pass grads through eval nets
         :param [params]: eval nets parameters
         :param [grad_clip]: gradient clip to prevent exploding gradients and divergence
-        :param [trajectory_worker]: worker used to gather trajectories from environ
+        :param [interaction_worker]: worker used to gather trajectories from environ
 
     """
 
@@ -44,7 +43,7 @@ class SyncTuner(ProtoTuner):
         super().commit(environ_prefix, accelerator, logger, run_id, seed=seed)
 
     # --------------------------------------------------
-    # @ -> Tuner optimization mechanizm
+    # @ -> Tuner optimization mechanism
     # --------------------------------------------------
 
     def optimize(
@@ -52,13 +51,12 @@ class SyncTuner(ProtoTuner):
         n_timesteps: int,
         batch_size: int,
         eval_schedule: int,
-        checkpoint_freq: int,
         eval_n_games: int,
         display_freq: int,
-    ) -> np.ndarray:
+    ) -> None:
         """optimize trainable within N rollouts"""
         rollout = 0
-        while self._trajectory_worker.t_env <= n_timesteps:
+        while self._interaction_worker.environ_timesteps <= n_timesteps:
             # ---- ---- ---- ---- ---- #
             # @ -> Synchronize Nets
             # ---- ---- ---- ---- ---- #
@@ -85,18 +83,19 @@ class SyncTuner(ProtoTuner):
 
             # Run for a whole episode at a time
             with torch.no_grad():
-                episode_batch = self._trajectory_worker.run()
-                self._memory.insert_episode_batch(episode_batch)
+                memory_shard, _ = self._interaction_worker.collect_rollout(
+                    test_mode=False
+                )
+                self._memory_cluster.insert_memory_shard(memory_shard)
 
-            if self._memory.can_sample(batch_size):
-                episode_sample = self._memory.sample(batch_size)
+            if self._memory_cluster.can_sample(batch_size):
+                shard_cluster = self._memory_cluster.sample(batch_size)
 
                 # Truncate batch to only filled timesteps
-                max_ep_t = episode_sample.max_t_filled()
-                episode_sample = episode_sample[:, :max_ep_t]
+                max_ep_t = shard_cluster.max_t_filled()
+                shard_cluster = shard_cluster[:, :max_ep_t]
 
-                if episode_sample.device != self._accelerator:
-                    episode_sample.to(self._accelerator)
+                shard_cluster.override_data_device(self._accelerator)
 
                 # ---- ---- ---- ---- ---- #
                 # @ -> Calculate Q-Vals
@@ -108,10 +107,9 @@ class SyncTuner(ProtoTuner):
                 timewise_eval_estimates = []
                 timewise_target_estimates = []
 
-                max_seq_length = episode_sample.max_seq_length
-                for seq_t in range(max_seq_length):
+                for seq_t in range(max_ep_t):
                     # timewise slices of episodes
-                    episode_time_slice = episode_sample[:, seq_t]
+                    episode_time_slice = shard_cluster[:, seq_t]
 
                     eval_net_q_estimates = self._mac.estimate_eval_q_vals(
                         feed=episode_time_slice
@@ -141,7 +139,7 @@ class SyncTuner(ProtoTuner):
                 t_timewise_target_estimates = t_timewise_target_estimates[:, 1:]
 
                 trainable_loss = self._trainable.calculate_loss(
-                    feed=episode_sample,
+                    feed=shard_cluster,
                     eval_q_vals=t_timewise_eval_estimates,
                     target_q_vals=t_timewise_target_estimates,
                 )
@@ -153,7 +151,9 @@ class SyncTuner(ProtoTuner):
                 self._optimizer.step()
 
                 self._trace_logger.log_stat(
-                    "timesteps_passed", self._trajectory_worker.t_env, rollout
+                    "timesteps_passed",
+                    self._interaction_worker.environ_timesteps,
+                    rollout,
                 )
                 self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
                 self._trace_logger.log_stat("gradient_norm", grad_norm, rollout)

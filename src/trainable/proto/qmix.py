@@ -57,7 +57,7 @@ class ProtoQmix(ProtoTrainable):
         state_dim: int,
         gamma: float,
         *,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
     ) -> None:
         self._rnd_seed(seed=seed)
 

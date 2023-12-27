@@ -1,4 +1,3 @@
-import json
 import logging
 from logging import Logger
 from typing import Tuple
@@ -9,7 +8,7 @@ from logger import TraceLogger
 from node import deserialize_configuration_node
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
-from tuner import SyncTuner
+from tuner import Tuner
 from util import methods
 
 
@@ -20,9 +19,9 @@ def delegate_tuner(
     trace_logger: Logger,
     *,
     seed: int,
-) -> SyncTuner:
+) -> Tuner:
     """delegate tuner w.r.t passed configuration"""
-    tuner = SyncTuner(configuration)
+    tuner = Tuner(configuration)
 
     timestamp = methods.get_current_timestamp()
     run_identifier = f"marlverse-run-{environ_prefix}-{timestamp}"
@@ -86,7 +85,6 @@ def runner(cfg: DictConfig) -> None:
     n_timesteps = runtime.n_timesteps
     batch_size = trainable_conf.buffer.batch_size
     eval_schedule = runtime.eval_schedule
-    checkpoint_freq = runtime.checkpoint_frequency
     eval_n_games = runtime.n_games
     display_freq = runtime.display_freq
 
@@ -94,7 +92,6 @@ def runner(cfg: DictConfig) -> None:
         n_timesteps,
         batch_size,
         eval_schedule,
-        checkpoint_freq,
         eval_n_games,
         display_freq,
     )

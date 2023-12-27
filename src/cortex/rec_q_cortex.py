@@ -52,11 +52,15 @@ class RecQCortex(ProtoCortex):
         data_attr = AttrKey.data
 
         # prepare feed and expand tensor to 4d
-        observations = data[data_attr._OBS.value][:, rollout_timestep].unsqueeze(0)
+        observations = data[data_attr._OBS.value][rollout_timestep, :].expand(
+            1, 1, -1, -1
+        )
         avail_actions = data[data_attr._AVAIL_ACTIONS.value][
-            :, rollout_timestep
-        ].unsqueeze(0)
-        actions = data[data_attr._ACTIONS.value][:, rollout_timestep].unsqueeze(0)
+            rollout_timestep, :
+        ].expand(1, 1, -1, -1)
+        actions = data[data_attr._ACTIONS.value][rollout_timestep, :].expand(
+            1, 1, -1, -1
+        )
 
         # prepare fed for the agent
         feed = {
@@ -65,12 +69,12 @@ class RecQCortex(ProtoCortex):
             data_attr._ACTIONS.value: actions,
         }
 
-        bs, time, n_agents, n_q_values = avail_actions.shape
+        bs, ts, n_agents, n_q_values = avail_actions.shape
 
         t_multi_agent_q_vals = self.estimate_eval_q_vals(feed)
         t_multi_agent_q_vals = t_multi_agent_q_vals.detach()
 
-        # n_agents X batch_size X n_q_vals
+        # ts X n_agents X n_q_vals
         avail_actions = avail_actions.view(-1, n_agents, n_q_values)
 
         decided_actions = (

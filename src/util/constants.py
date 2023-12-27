@@ -31,7 +31,8 @@ class _DataKey(Enum):
     _GROUP = "group"
     _VALUE_SHAPE = "vshape"
     _DTYPE = "dtype"
-    _EP_CONST = "episode_const"
+    _MAX_SEQ_LEN = "_max_seq_length"
+    _TRANSFORMS = "transforms"
 
     # groups and transforms
     _AGENT_GROUP = "agents"
@@ -59,6 +60,7 @@ class _TunerKey(Enum):
 
     _BATCH_SIZE = "batch_size"
     _MEM_SIZE = "mem_size"
+    _SAMPLING_METHOD = "mode"
 
 
 class _LoggerKey(Enum):
