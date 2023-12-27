@@ -62,12 +62,41 @@ class Memory:
             memory.move_to_device(device)
 
     def __getitem__(self, item):
-        """logic for batch slicing"""
-        bs, ts = self._decode_slice_information(item)
-        print(bs)
-        print(ts)
+        """logic for batch and time slicing"""
+        # return torch tensor consisting of trainable memories
         if isinstance(item, str):
-            pass  # Implementation goes here
+            # Collect trainable data tensors
+            trainable_data = [
+                memory[item]
+                for memory in self._memories
+                if isinstance(memory[item], torch.Tensor)
+            ]
+
+            # Check if trainable data is not empty
+            if not trainable_data:
+                raise ValueError("No trainable data found for the given item.")
+
+            # Stack or concatenate tensors
+            # Use torch.stack if all tensors have the same shape, else use torch.cat
+            return (
+                torch.stack(trainable_data)
+                if all(
+                    tensor.shape == trainable_data[0].shape for tensor in trainable_data
+                )
+                else torch.cat(trainable_data, dim=0)
+            )
+
+        # return new memory object that has modified memories ( by slices )
+        else:
+            bs, ts = self._decode_slice_information(item)
+            new_memories = self._memories.copy()
+            for idx, memory in enumerate(self._memories):
+                new_memory = memory[ts]
+                new_memories[idx] = new_memory
+
+            # safe approach
+            new_mem_obj = Memory.from_data(new_memories)
+            return new_mem_obj
 
     def _decode_slice_information(self, item):
         """decode information about batch and time slice"""
