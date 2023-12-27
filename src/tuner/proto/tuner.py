@@ -1,4 +1,4 @@
-import logging
+from pathlib import Path
 import os
 import random
 from logging import Logger
@@ -15,6 +15,7 @@ from src.environ.starcraft import SC2Environ
 from src.memory.cluster import MemoryCluster
 from src.registry import trainable_global_registry
 from src.transforms import OneHotTransform
+from src.evaluator import CoreEvaluator
 from src.util import constants
 from src.util.constants import AttrKey
 from src.worker import InteractionWorker
@@ -156,10 +157,11 @@ class ProtoTuner(ProtoTuner):
         assert env is not None, "Environment cound not be created"
         return env, env_info
 
-    # TODO: 1. fill this method
-    def _integrate_evaluator(self):
+    def _integrate_evaluator(self, env: SC2Environ, worker: InteractionWorker, logger: Logger, replay_save_dir: Path) -> CoreEvaluator:
         """create evaluator instance"""
-        pass
+        evaluator = CoreEvaluator(env, worker, logger)
+        evaluator.ensemble_evaluator(replay_save_dir)
+        return evaluator
 
     def _rnd_seed(self, *, seed: Optional[int] = None):
         """set random seed"""
@@ -366,8 +368,8 @@ class ProtoTuner(ProtoTuner):
         # @ -> Integrate Evaluator
         # ---- ---- ---- ---- ---- #
 
-        # TODO: 1. implement evaluator stuff
-        self._evaluator = None
+        replay_save_path = constants.REPLAY_DIR / self._run_identifier
+        self._evaluator = self._integrate_evaluator(self._environ, self._interaction_worker, self._trace_logger, replay_save_path)
 
     def _synchronize_target_nets(self):
         """synchronize target networks inside cortex and trainable"""

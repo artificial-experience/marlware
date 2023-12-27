@@ -1,5 +1,7 @@
 from logging import Logger
+from typing import Tuple
 from typing import Optional
+from collections import defaultdict
 
 import ray
 from smac.env import StarCraft2Env
@@ -66,10 +68,11 @@ class InteractionWorker:
 
         return new_mem_shard
 
-    def collect_rollout(self, test_mode: bool = False) -> MemoryShard:
+    def collect_rollout(self, test_mode: bool = False) -> Tuple[MemoryShard, dict]:
         """collect single episode of data and store in cache"""
         memory_shard = self.reset()
 
+        metrics = defaultdict(int)
         terminated = False
         episode_return = 0
 
@@ -86,11 +89,19 @@ class InteractionWorker:
             # update at timestep t
             memory_shard.update(pre_transition_data, time_slice=self._episode_ts)
 
-            actions = self._cortex.infer_eps_greedy_actions(
-                data=memory_shard,
-                rollout_timestep=self._episode_ts,
-                env_timestep=self._env_ts,
-            )
+            # Conditional action inference based on test_mode
+            if test_mode:
+                actions = self._cortex.infer_greedy_actions(
+                    data=memory_shard,
+                    rollout_timestep=self._episode_ts,
+                    env_timestep=-1,
+                )
+            else:
+                actions = self._cortex.infer_eps_greedy_actions(
+                    data=memory_shard,
+                    rollout_timestep=self._episode_ts,
+                    env_timestep=self._env_ts,
+                )
 
             # step the environ
             reward, terminated, env_info = self._env.step(actions[0])
@@ -107,8 +118,12 @@ class InteractionWorker:
             memory_shard.update(post_transition_data, time_slice=self._episode_ts)
 
             episode_return += reward
+            battle_won = int(env_info.get("battle_won", False))
+
             self._episode_ts += 1
-            self._env_ts += 1
+
+            if not test_mode:
+                self._env_ts += 1
 
         # update at timestep t_max + 1
         termination_data = {
@@ -119,11 +134,19 @@ class InteractionWorker:
 
         memory_shard.update(termination_data, time_slice=self._episode_ts)
 
-        actions = self._cortex.infer_eps_greedy_actions(
-            data=memory_shard,
-            rollout_timestep=self._episode_ts,
-            env_timestep=self._env_ts,
-        )
+        # Repeat conditional check for post-termination data
+        if test_mode:
+            actions = self._cortex.infer_greedy_actions(
+                data=memory_shard,
+                rollout_timestep=self._episode_ts,
+                env_timestep=-1,
+            )
+        else:
+            actions = self._cortex.infer_eps_greedy_actions(
+                data=memory_shard,
+                rollout_timestep=self._episode_ts,
+                env_timestep=self._env_ts,
+            )
 
         post_termination_data = {
             self._data_attr._ACTIONS.value: actions,
@@ -131,7 +154,10 @@ class InteractionWorker:
 
         memory_shard.update(post_termination_data, time_slice=self._episode_ts)
 
-        return memory_shard
+        metrics["evaluation_score"] = episode_return
+        metrics["evaluation_battle_won"] = battle_won
+
+        return memory_shard, metrics
 
     @property
     def environ_timesteps(self):

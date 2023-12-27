@@ -57,6 +57,7 @@ class Tuner(ProtoTuner):
         """optimize trainable within N rollouts"""
         rollout = 0
         while self._interaction_worker.environ_timesteps <= n_timesteps:
+
             # ---- ---- ---- ---- ---- #
             # @ -> Synchronize Nets
             # ---- ---- ---- ---- ---- #
@@ -68,9 +69,12 @@ class Tuner(ProtoTuner):
             # @ -> Evaluate Performance
             # ---- ---- ---- ---- ---- #
 
-            # TODO: 1. define evaluation logic
             if rollout % eval_schedule == 0:
-                pass
+                is_new_best = self._evaluator.evaluate(rollout=rollout, n_games=eval_n_games)
+
+                if is_new_best:
+                    model_identifier = "best_model.pt"
+                    self.save_models(model_identifier)
 
             # ---- ---- ---- ---- ---- #
             # @ -> Gather Rollouts
@@ -78,7 +82,7 @@ class Tuner(ProtoTuner):
 
             # Run for a whole episode at a time
             with torch.no_grad():
-                memory_shard = self._interaction_worker.collect_rollout(test_mode=False)
+                memory_shard, _ = self._interaction_worker.collect_rollout(test_mode=False)
                 self._memory_cluster.insert_memory_shard(memory_shard)
 
             if self._memory_cluster.can_sample(batch_size):

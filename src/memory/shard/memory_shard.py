@@ -56,6 +56,7 @@ class MemoryShard(ProtoMemory):
             dtype = self._scheme[attr_key].get(
                 self._data_attr._DTYPE.value, torch.float32
             )
+            attr_value = np.array(attr_value)
             value = torch.tensor(attr_value, dtype=dtype, device=self._device)
             self._check_safe_view(value, target[attr_key][_time_slice])
             target[attr_key][_time_slice] = value.view_as(target[attr_key][_time_slice])
