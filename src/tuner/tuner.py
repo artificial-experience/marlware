@@ -72,15 +72,19 @@ class Tuner(ProtoTuner):
             # ---- ---- ---- ---- ---- #
 
             if rollout % eval_schedule == 0:
-                is_new_best_ref = self._evaluator.evaluate.remote(
+                evaluator_output_ref = self._evaluator.evaluate.remote(
                     rollout=rollout, n_games=eval_n_games
                 )
 
-                is_new_best = ray.get(is_new_best_ref)
+                evaluator_output = ray.get(evaluator_output_ref)
 
+                is_new_best = evaluator_output[0]
                 if is_new_best:
                     model_identifier = "best_model.pt"
                     self.save_models(model_identifier)
+
+                evaluator_metrics = evaluator_output[1]
+                self.log_metrics(evaluator_metrics)
 
             # ---- ---- ---- ---- ---- #
             # @ -> Gather Rollouts

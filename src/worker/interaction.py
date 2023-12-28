@@ -28,7 +28,6 @@ class InteractionWorker:
         # internal params
         self._env = None
         self._cortex = None
-        self._logger = None
         self._device = None
         self._memory_blueprint = None
 
@@ -37,14 +36,12 @@ class InteractionWorker:
         env: StarCraft2Env,
         cortex: RecQCortex,
         memory_blueprint: dict,
-        logger: Logger,
         *,
         device: Optional[str] = "cpu",
     ) -> None:
         """ensemble interaction worker"""
         self._env = env
         self._cortex = cortex
-        self._logger = logger
         self._device = device
         self._memory_blueprint = memory_blueprint
 

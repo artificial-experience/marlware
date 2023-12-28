@@ -2,6 +2,7 @@ import os
 import random
 from logging import Logger
 from pathlib import Path
+from typing import List
 from typing import Optional
 
 import numpy as np
@@ -140,7 +141,6 @@ class ProtoTuner(ProtoTuner):
         env: SC2Environ,
         cortex: RecQCortex,
         memory_blueprint: dict,
-        logger: Logger,
         accelerator: str,
     ) -> InteractionWorker:
         """create worker instance to be used for interaction with env"""
@@ -149,7 +149,6 @@ class ProtoTuner(ProtoTuner):
             env=env,
             cortex=cortex,
             memory_blueprint=memory_blueprint,
-            logger=logger,
             device=accelerator,
         )
         return worker
@@ -164,10 +163,9 @@ class ProtoTuner(ProtoTuner):
     def _integrate_evaluator(
         self,
         worker: InteractionWorker,
-        logger: Logger,
     ) -> CoreEvaluator:
         """create evaluator instance"""
-        evaluator = CoreEvaluator.remote(worker, logger)
+        evaluator = CoreEvaluator.remote(worker)
         evaluator.ensemble_evaluator.remote()
         return evaluator
 
@@ -361,7 +359,7 @@ class ProtoTuner(ProtoTuner):
         )
 
         # ---- ---- ---- ---- ---- #
-        # @ -> Update Ray obj store
+        # @ -> Ray Store and Actors
         # ---- ---- ---- ---- ---- #
 
         self.update_ray_object_store()
@@ -372,12 +370,10 @@ class ProtoTuner(ProtoTuner):
 
         env_ref = self._ray_map["env"]
         mac_ref = self._ray_map["mac"]
-        logger_ref = self._ray_map["logger"]
         self._interaction_worker = self._integrate_worker(
             env_ref,
             mac_ref,
             memory_blueprint,
-            logger_ref,
             self._accelerator,
         )
 
@@ -388,7 +384,6 @@ class ProtoTuner(ProtoTuner):
         replay_save_path: Path = constants.REPLAY_DIR / self._run_identifier
         self._evaluator = self._integrate_evaluator(
             self._interaction_worker,
-            self._trace_logger,
         )
 
     def _synchronize_target_nets(self):
@@ -405,15 +400,28 @@ class ProtoTuner(ProtoTuner):
 
         env_ref = ray.put(self._environ)
         mac_ref = ray.put(self._mac)
-        logger_ref = ray.put(self._trace_logger)
 
         # create a map with references
         ray_map = {
             "env": env_ref,
             "mac": mac_ref,
-            "logger": logger_ref,
         }
         self._ray_map = ray_map
+
+    def spawn_worker_actors(
+        self,
+        n_actors: int,
+        env_ref: ray.ObjectRef,
+        mac_ref: ray.ObjectRef,
+        memory_blueprint: dict,
+        accelerator: str,
+    ) -> List[InteractionWorker]:
+        """spawn number of actors"""
+        pass
+
+    def update_actors_cortes(self, cortex: ray.ObjectRef) -> None:
+        """update actors of a new reference to cortex"""
+        pass
 
     # --------------------------------------------------
     # @ -> Methods for saving and loading models
@@ -432,3 +440,43 @@ class ProtoTuner(ProtoTuner):
     def load_models(self, path_to_models: str) -> bool:
         """load all models given path"""
         pass
+
+    # --------------------------------------------------
+    # @ -> Methods for parsing and logging metrics
+    # --------------------------------------------------
+
+    def log_metrics(self, metrics: dict) -> None:
+        """log metrics using logger"""
+        mean_performance = metrics["mean_performance"]
+        mean_scores = metrics["mean_scores"]
+        mean_won_battles = metrics["mean_won_battles"]
+        best_score = metrics["best_score"]
+        highest_battle_win_score = metrics["highest_battle_win_score"]
+        rollout = metrics["rollout"]
+
+        if not mean_performance:
+            return
+
+        self._trace_logger.log_stat("eval_score_mean", mean_scores, rollout)
+
+        # Calculate statistics
+        eval_running_mean = np.mean(mean_performance)
+        eval_score_std = np.std(mean_performance)
+
+        # Log running mean and standard deviation
+        self._trace_logger.log_stat(
+            "eval_score_running_mean", eval_running_mean, rollout
+        )
+        self._trace_logger.log_stat("eval_score_std", eval_score_std, rollout)
+        self._trace_logger.log_stat("eval_won_battles_mean", mean_won_battles, rollout)
+        self._trace_logger.log_stat(
+            "eval_most_won_battles", highest_battle_win_score, rollout
+        )
+        self._trace_logger.log_stat("eval_mean_higest_score", best_score, rollout)
+
+        # Calculate and log the variation between the most recent two evaluations, if available
+        if len(mean_performance) >= 2:
+            # Calculate the variation between the mean scores of the last two evaluations
+            recent_mean_scores = [np.mean(sublist) for sublist in mean_performance[-2:]]
+            eval_score_var = np.abs(recent_mean_scores[-1] - recent_mean_scores[-2])
+            self._trace_logger.log_stat("eval_score_var", eval_score_var, rollout)
