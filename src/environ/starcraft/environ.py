@@ -1,17 +1,10 @@
 from typing import Dict
 from typing import Tuple
 
-import ray
 from smac.env import StarCraft2Env
 
 
-# TODO: refactor this shit class
-"""
-TODO: enable when integrating with ray
-@ray.remote
-"""
-
-
+# TODO: Refactor this shit class
 class SC2Environ:
     """
     Abstraction layer for SC2 environment handler

@@ -3,6 +3,7 @@ from logging import Logger
 from typing import Tuple
 
 import hydra
+import ray
 import wandb
 from logger import TraceLogger
 from node import deserialize_configuration_node
@@ -88,6 +89,9 @@ def runner(cfg: DictConfig) -> None:
     eval_n_games = runtime.n_games
     display_freq = runtime.display_freq
 
+    if not ray.is_initialized():
+        ray.init()
+
     tuner.optimize(
         n_timesteps,
         batch_size,
@@ -95,6 +99,8 @@ def runner(cfg: DictConfig) -> None:
         eval_n_games,
         display_freq,
     )
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":

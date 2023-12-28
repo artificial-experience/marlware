@@ -1,6 +1,7 @@
 from logging import Logger
 from typing import Optional
 
+import ray
 import torch
 from omegaconf import OmegaConf
 
@@ -43,7 +44,7 @@ class Tuner(ProtoTuner):
         super().commit(environ_prefix, accelerator, logger, run_id, seed=seed)
 
     # --------------------------------------------------
-    # @ -> Tuner optimization mechanism
+    # @ -> Tuner Optimization Mechanism
     # --------------------------------------------------
 
     def optimize(
@@ -56,7 +57,9 @@ class Tuner(ProtoTuner):
     ) -> None:
         """optimize trainable within N rollouts"""
         rollout = 0
-        while self._interaction_worker.environ_timesteps <= n_timesteps:
+
+        # change later
+        while True:
             # ---- ---- ---- ---- ---- #
             # @ -> Synchronize Nets
             # ---- ---- ---- ---- ---- #
@@ -69,9 +72,11 @@ class Tuner(ProtoTuner):
             # ---- ---- ---- ---- ---- #
 
             if rollout % eval_schedule == 0:
-                is_new_best = self._evaluator.evaluate(
+                is_new_best_ref = self._evaluator.evaluate.remote(
                     rollout=rollout, n_games=eval_n_games
                 )
+
+                is_new_best = ray.get(is_new_best_ref)
 
                 if is_new_best:
                     model_identifier = "best_model.pt"
@@ -83,9 +88,13 @@ class Tuner(ProtoTuner):
 
             # Run for a whole episode at a time
             with torch.no_grad():
-                memory_shard, _ = self._interaction_worker.collect_rollout(
+                worker_output_ref = self._interaction_worker.collect_rollout.remote(
                     test_mode=False
                 )
+
+                worker_output = ray.get(worker_output_ref)
+                memory_shard = worker_output[0]
+
                 self._memory_cluster.insert_memory_shard(memory_shard)
 
             if self._memory_cluster.can_sample(batch_size):
@@ -150,13 +159,22 @@ class Tuner(ProtoTuner):
                 )
                 self._optimizer.step()
 
+                # TODO: change this line of code
                 self._trace_logger.log_stat(
                     "timesteps_passed",
-                    self._interaction_worker.environ_timesteps,
+                    -1,
                     rollout,
                 )
                 self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
                 self._trace_logger.log_stat("gradient_norm", grad_norm, rollout)
+
+                # ---- ---- ---- ---- ---- #
+                # @ -> Update mac in actors
+                # ---- ---- ---- ---- ---- #
+
+                self.update_ray_object_store()
+                updated_mac_ref = self._ray_map["mac"]
+                self._interaction_worker.update_cortex_object.remote(updated_mac_ref)
 
             # ---- ---- ---- ---- ---- #
             # @ -> Log Stats

@@ -3,8 +3,8 @@ from typing import Dict
 from typing import Optional
 
 import numpy as np
+import ray
 import torch
-import torch.nn.functional as F
 from omegaconf import OmegaConf
 
 from .proto import ProtoCortex

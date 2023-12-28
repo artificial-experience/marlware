@@ -1,10 +1,11 @@
-from pathlib import Path
 import os
 import random
 from logging import Logger
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import ray
 import torch
 from omegaconf import OmegaConf
 
@@ -12,10 +13,10 @@ from src import trainable
 from src.abstract import ProtoTuner
 from src.cortex import RecQCortex
 from src.environ.starcraft import SC2Environ
+from src.evaluator import CoreEvaluator
 from src.memory.cluster import MemoryCluster
 from src.registry import trainable_global_registry
 from src.transforms import OneHotTransform
-from src.evaluator import CoreEvaluator
 from src.util import constants
 from src.util.constants import AttrKey
 from src.worker import InteractionWorker
@@ -69,6 +70,9 @@ class ProtoTuner(ProtoTuner):
 
         # run identifier
         self._run_identifier = None
+
+        # ray sutff
+        self._ray_map = None
 
     # --------------------------------------------------
     # @ -> Methods for component integration
@@ -140,8 +144,8 @@ class ProtoTuner(ProtoTuner):
         accelerator: str,
     ) -> InteractionWorker:
         """create worker instance to be used for interaction with env"""
-        worker = InteractionWorker()
-        worker.ensemble_interaction_worker(
+        worker = InteractionWorker.remote()
+        worker.ensemble_interaction_worker.remote(
             env=env,
             cortex=cortex,
             memory_blueprint=memory_blueprint,
@@ -159,14 +163,12 @@ class ProtoTuner(ProtoTuner):
 
     def _integrate_evaluator(
         self,
-        env: SC2Environ,
         worker: InteractionWorker,
         logger: Logger,
-        replay_save_dir: Path,
     ) -> CoreEvaluator:
         """create evaluator instance"""
-        evaluator = CoreEvaluator(env, worker, logger)
-        evaluator.ensemble_evaluator(replay_save_dir)
+        evaluator = CoreEvaluator.remote(worker, logger)
+        evaluator.ensemble_evaluator.remote()
         return evaluator
 
     def _rnd_seed(self, *, seed: Optional[int] = None):
@@ -359,14 +361,23 @@ class ProtoTuner(ProtoTuner):
         )
 
         # ---- ---- ---- ---- ---- #
+        # @ -> Update Ray obj store
+        # ---- ---- ---- ---- ---- #
+
+        self.update_ray_object_store()
+
+        # ---- ---- ---- ---- ---- #
         # @ -> Setup Worker
         # ---- ---- ---- ---- ---- #
 
+        env_ref = self._ray_map["env"]
+        mac_ref = self._ray_map["mac"]
+        logger_ref = self._ray_map["logger"]
         self._interaction_worker = self._integrate_worker(
-            self._environ,
-            self._mac,
+            env_ref,
+            mac_ref,
             memory_blueprint,
-            self._trace_logger,
+            logger_ref,
             self._accelerator,
         )
 
@@ -374,18 +385,35 @@ class ProtoTuner(ProtoTuner):
         # @ -> Integrate Evaluator
         # ---- ---- ---- ---- ---- #
 
-        replay_save_path = constants.REPLAY_DIR / self._run_identifier
+        replay_save_path: Path = constants.REPLAY_DIR / self._run_identifier
         self._evaluator = self._integrate_evaluator(
-            self._environ,
             self._interaction_worker,
             self._trace_logger,
-            replay_save_path,
         )
 
     def _synchronize_target_nets(self):
         """synchronize target networks inside cortex and trainable"""
         self._trainable.synchronize_target_net()
         self._mac.synchronize_target_net()
+
+    # --------------------------------------------------
+    # @ -> Methods for interaction with ray engine
+    # --------------------------------------------------
+
+    def update_ray_object_store(self) -> None:
+        """put necessary components into ray object store"""
+
+        env_ref = ray.put(self._environ)
+        mac_ref = ray.put(self._mac)
+        logger_ref = ray.put(self._trace_logger)
+
+        # create a map with references
+        ray_map = {
+            "env": env_ref,
+            "mac": mac_ref,
+            "logger": logger_ref,
+        }
+        self._ray_map = ray_map
 
     # --------------------------------------------------
     # @ -> Methods for saving and loading models

@@ -4,22 +4,20 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import ray
 
 from src.environ.starcraft import SC2Environ
 from src.worker import InteractionWorker
 
 
+@ray.remote
 class CoreEvaluator:
-    def __init__(
-        self, env: SC2Environ, worker: InteractionWorker, logger: Logger
-    ) -> None:
-        self._env = env
+    def __init__(self, worker: InteractionWorker, logger: Logger) -> None:
         self._worker = worker
         self._logger = logger
 
-    def ensemble_evaluator(self, replay_save_path: Path) -> None:
-        self._env.replay_dir = replay_save_path
-
+    def ensemble_evaluator(self) -> None:
+        """ensemble internal variables"""
         self._mean_performance = []
         self._best_score = 0.0
         self._highest_battle_win_score = 0.0
@@ -30,7 +28,9 @@ class CoreEvaluator:
         won_battles = []
 
         for game_idx in range(n_games):
-            _, metrics = self._worker.collect_rollout(test_mode=True)
+            worker_output_ref = self._worker.collect_rollout.remote(test_mode=True)
+            worker_output = ray.get(worker_output_ref)
+            metrics = worker_output[1]
 
             # parse metrics
             score: int = metrics["evaluation_score"]

@@ -1,7 +1,7 @@
-from logging import Logger
-from typing import Tuple
-from typing import Optional
 from collections import defaultdict
+from logging import Logger
+from typing import Optional
+from typing import Tuple
 
 import ray
 from smac.env import StarCraft2Env
@@ -11,12 +11,7 @@ from src.memory.shard import MemoryShard
 from src.util.constants import AttrKey
 
 
-"""
-TODO: enable when integrating with ray
 @ray.remote
-"""
-
-
 class InteractionWorker:
     """Interface class between environment and memory replay and cortex
 
@@ -159,7 +154,6 @@ class InteractionWorker:
 
         return memory_shard, metrics
 
-    @property
-    def environ_timesteps(self):
-        """get environment timesteps"""
-        return self._env_ts
+    def update_cortex_object(self, cortex) -> None:
+        """update cortex instance"""
+        self._cortex = cortex
