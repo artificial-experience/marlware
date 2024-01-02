@@ -102,16 +102,19 @@ def runner(cfg: DictConfig) -> None:
     if not ray.is_initialized():
         ray.init()
 
-    tuner.optimize(
-        n_timesteps,
-        batch_size,
-        warmup,
-        eval_schedule,
-        eval_n_games,
-        display_freq,
-    )
-
-    ray.shutdown()
+    try:
+        tuner.optimize(
+            n_timesteps,
+            batch_size,
+            warmup,
+            eval_schedule,
+            eval_n_games,
+            display_freq,
+        )
+    except Exception as e:
+        logger.info(f"Failed to optimize due to exception {e}")
+        tuner.close_envs()
+        ray.shutdown()
 
 
 if __name__ == "__main__":

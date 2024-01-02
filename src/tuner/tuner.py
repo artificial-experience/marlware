@@ -213,6 +213,10 @@ class Tuner(ProtoTuner):
             # update episode counter ( works for synchronous training )
             rollout += 1
 
-            # close environment once the work is done
-            for env in self._environ:
-                env.close()
+        # close environment once the work is done
+        self.close_envs()
+
+    def close_envs(self) -> None:
+        """close all existing environments"""
+        for env in self._environ:
+            env.close()
