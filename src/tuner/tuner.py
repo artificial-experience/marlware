@@ -59,6 +59,7 @@ class Tuner(ProtoTuner):
         self,
         n_timesteps: int,
         batch_size: int,
+        warmup: int,
         eval_schedule: int,
         eval_n_games: int,
         display_freq: int,
@@ -98,19 +99,29 @@ class Tuner(ProtoTuner):
             # @ -> Gather Rollouts
             # ---- ---- ---- ---- ---- #
 
-            # Run for a whole episode at a time
+            # Run for a whole episode at a time per worker instance
             with torch.no_grad():
                 worker_output_ref = [
                     worker.collect_rollout.remote(test_mode=False)
                     for worker in self._interaction_worker
                 ]
 
-                worker_futures = ray.get(worker_output_ref)
-                memory_shards = [future[0] for future in worker_futures]
+                # Loop until all worker futures are processed
+                while worker_output_ref:
+                    # Use ray.wait to get any finished task
+                    finished, worker_output_ref = ray.wait(
+                        worker_output_ref, num_returns=1, timeout=None
+                    )
 
-                self._memory_cluster.insert_memory_shard(memory_shards)
+                    # Process each finished task
+                    for future in finished:
+                        result = ray.get(future)
+                        memory_shard = result[0]
 
-            if self._memory_cluster.can_sample(batch_size):
+                        # Insert each memory shard into the buffer as soon as it's ready
+                        self._memory_cluster.insert_memory_shard(memory_shard)
+
+            if self._memory_cluster.can_sample(batch_size) and rollout > warmup:
                 shard_cluster = self._memory_cluster.sample(batch_size)
 
                 # Truncate batch to only filled timesteps

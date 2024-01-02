@@ -9,6 +9,7 @@ class RuntimeConfig:
     checkpoint_frequency: int
     n_games: int
     display_freq: int
+    warmup: int
 
 
 @dataclass

@@ -88,10 +88,16 @@ class ProtoQmix(ProtoTrainable):
         """return hypernet and mixer optimization params"""
         return self._eval_mixer.parameters()
 
-    def move_to_cuda(self):
-        """move models to cuda device"""
-        self._eval_mixer.cuda()
-        self._target_mixer.cuda()
+    def move_to_device(self, device=None):
+        """
+        Move models to specified device.
+        If no device is specified, it defaults to CUDA if available, else CPU.
+        """
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self._eval_mixer.to(device)
+        self._target_mixer.to(device)
 
     def save_models(self, save_directory: Path, model_identifier: str) -> None:
         """save model weights to target directory"""

@@ -80,6 +80,7 @@ def runner(cfg: DictConfig) -> None:
     accelerator = device.get("accelerator", "cpu")
     seed = device.get("seed", None)
     num_workers = device.get("num_workers", 1)
+    warmup = runtime.get("warmup", 0)
 
     environ_map = environ_conf.map.get("prefix", "3m")
 
@@ -104,6 +105,7 @@ def runner(cfg: DictConfig) -> None:
     tuner.optimize(
         n_timesteps,
         batch_size,
+        warmup,
         eval_schedule,
         eval_n_games,
         display_freq,

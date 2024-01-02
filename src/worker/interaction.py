@@ -1,5 +1,4 @@
 from collections import defaultdict
-from logging import Logger
 from typing import Optional
 from typing import Tuple
 

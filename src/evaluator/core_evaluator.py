@@ -1,12 +1,10 @@
 from collections import defaultdict
 from typing import Any
 from typing import Optional
-from typing import Tuple
 
 import numpy as np
 import ray
 
-from src.environ.starcraft import SC2Environ
 from src.worker import InteractionWorker
 
 

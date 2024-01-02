@@ -1,6 +1,5 @@
 import random
 from typing import Optional
-from typing import Tuple
 from typing import Union
 
 import numpy as np
@@ -140,7 +139,6 @@ class MemoryCluster:
     def ensemble_memory_cluster(
         self,
         *,
-        device: Optional[str] = "cpu",
         sampling_method: Optional[str] = "uniform",
         seed: Optional[int] = None,
     ) -> None:

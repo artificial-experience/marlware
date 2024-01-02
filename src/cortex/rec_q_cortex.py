@@ -3,7 +3,6 @@ from typing import Dict
 from typing import Optional
 
 import numpy as np
-import ray
 import torch
 from omegaconf import OmegaConf
 
@@ -86,7 +85,10 @@ class RecQCortex(ProtoCortex):
                 t_multi_agent_q_vals, avail_actions, env_timestep
             )
         )
-        return decided_actions.detach().numpy()
+
+        decided_actions_cpu = decided_actions.cpu()
+        detached_actions = decided_actions_cpu.detach().numpy()
+        return detached_actions
 
     def estimate_q_vals(
         self, feed: Dict[str, torch.Tensor], use_target: bool = False

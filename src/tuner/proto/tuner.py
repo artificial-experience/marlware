@@ -130,14 +130,11 @@ class ProtoTuner(ProtoTuner):
         self,
         mem_size: int,
         sampling_method: str,
-        accelerator: str,
         seed: int,
     ) -> MemoryCluster:
         """create instance of replay memory based on environ info and memory conf"""
         memory = MemoryCluster(mem_size)
-        memory.ensemble_memory_cluster(
-            device=accelerator, sampling_method=sampling_method, seed=seed
-        )
+        memory.ensemble_memory_cluster(sampling_method=sampling_method, seed=seed)
         return memory
 
     def _integrate_worker(
@@ -270,6 +267,7 @@ class ProtoTuner(ProtoTuner):
         self._trainable: trainable.Trainable = self._integrate_trainable(
             trainable, n_agents, obs_shape, state_shape, gamma, seed[0]
         )
+        self._trainable.move_to_device(device=self._accelerator)
 
         # ---- ---- ---- ---- ---- #
         # @ -> Integrate Cortex
@@ -280,6 +278,7 @@ class ProtoTuner(ProtoTuner):
         self._mac = self._integrate_multi_agent_cortex(
             model_conf, exp_conf, n_agents, n_actions, obs_shape, seed[0]
         )
+        self._mac.move_to_device(device=self._accelerator)
 
         # ---- ---- ---- ---- ---- #
         # @ -> Gather Params
@@ -384,7 +383,6 @@ class ProtoTuner(ProtoTuner):
         self._memory_cluster = self._integrate_memory(
             mem_size,
             sampling_method,
-            self._accelerator,
             seed[0],
         )
 

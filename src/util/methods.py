@@ -1,12 +1,8 @@
 from collections import namedtuple
 from datetime import datetime
-from functools import reduce
-from functools import wraps
 from os.path import expandvars
-from typing import Any
 from typing import Dict
 from typing import List
-from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +13,7 @@ from torch.nn import functional as F
 
 
 def load_yaml(yaml_path: str):
-    """self explanatory method"""
+    """self-explanatory method"""
 
     def process_dict(dict_to_process):
         for key, item in dict_to_process.items():

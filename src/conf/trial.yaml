@@ -25,8 +25,9 @@ rollout:
   train:
     n_timesteps: 4_000_000
     display_freq: 200
+    warmup: 100
   test:
-    eval_schedule: 1_000
+    eval_schedule: 400
     checkpoint_frequency: 200
     n_games: 40
 
@@ -36,7 +37,9 @@ rollout:
 
 device:
   accelerator: "cpu"
-  num_workers: 2
+  num_workers: 4
   seed:
     - 91
     - 92
+    - 93
+    - 94
