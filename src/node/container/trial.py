@@ -13,6 +13,7 @@ class RuntimeConfig:
 
 @dataclass
 class DeviceConfig:
+    num_workers: int
     accelerator: str
     seed: int
 

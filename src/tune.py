@@ -19,6 +19,7 @@ def delegate_tuner(
     accelerator: str,
     trace_logger: Logger,
     *,
+    num_workers: int,
     seed: int,
 ) -> Tuner:
     """delegate tuner w.r.t passed configuration"""
@@ -32,6 +33,7 @@ def delegate_tuner(
         accelerator=accelerator,
         logger=trace_logger,
         run_id=run_identifier,
+        num_workers=num_workers,
         seed=seed,
     )
     return tuner
@@ -77,10 +79,17 @@ def runner(cfg: DictConfig) -> None:
 
     accelerator = device.get("accelerator", "cpu")
     seed = device.get("seed", None)
+    num_workers = device.get("num_workers", 1)
+
     environ_map = environ_conf.map.get("prefix", "3m")
 
     tuner = delegate_tuner(
-        environ_map, trainable_conf, accelerator, trace_logger, seed=seed
+        environ_map,
+        trainable_conf,
+        accelerator,
+        trace_logger,
+        num_workers=num_workers,
+        seed=seed,
     )
 
     n_timesteps = runtime.n_timesteps

@@ -1,5 +1,6 @@
 import os
 import random
+from collections import defaultdict
 from logging import Logger
 from pathlib import Path
 from typing import List
@@ -73,7 +74,10 @@ class ProtoTuner(ProtoTuner):
         self._run_identifier = None
 
         # ray sutff
-        self._ray_map = None
+        self._ray_map = defaultdict(int)
+
+        # num workers
+        self._num_worker_handlers = 1
 
     # --------------------------------------------------
     # @ -> Methods for component integration
@@ -138,27 +142,41 @@ class ProtoTuner(ProtoTuner):
 
     def _integrate_worker(
         self,
-        env: SC2Environ,
-        cortex: RecQCortex,
+        env: List[ray.ObjectRef],
+        cortex: ray.ObjectRef,
         memory_blueprint: dict,
         accelerator: str,
+        num_workers: int,
     ) -> InteractionWorker:
         """create worker instance to be used for interaction with env"""
-        worker = InteractionWorker.remote()
-        worker.ensemble_interaction_worker.remote(
-            env=env,
-            cortex=cortex,
-            memory_blueprint=memory_blueprint,
-            device=accelerator,
-        )
-        return worker
+        worker_handlers = []
+        for worker_id in range(num_workers):
+            worker = InteractionWorker.remote()
+            worker.ensemble_interaction_worker.remote(
+                env=env[worker_id],
+                cortex=cortex,
+                memory_blueprint=memory_blueprint,
+                device=accelerator,
+            )
+            worker_handlers.append(worker)
+        return worker_handlers
 
-    def _integrate_environ(self, map_name: str) -> SC2Environ:
+    def _integrate_environ(
+        self, map_name: str, num_envs: int, seed: list
+    ) -> SC2Environ:
         """based on map_name create sc2 environ instance"""
         env_manager = SC2Environ(map_name)
-        env, env_info = env_manager.create_env_instance()
-        assert env is not None, "Environment cound not be created"
-        return env, env_info
+        env_list = []
+        env_info_list = []
+        for env_idx in range(num_envs):
+            env, env_info = env_manager.create_env_instance(seed=seed[env_idx])
+            assert env is not None, "Environment cound not be created"
+            assert env_info is not None, "Environment info cound not be created"
+
+            env_list.append(env)
+            env_info_list.append(env_info)
+
+        return env_list, env_info_list
 
     def _integrate_evaluator(
         self,
@@ -189,10 +207,17 @@ class ProtoTuner(ProtoTuner):
         logger: Logger,
         run_id: str,
         *,
-        seed: Optional[int] = None,
+        num_workers: Optional[int] = 4,
+        seed: Optional[list] = None,
     ) -> None:
         """based on conf delegate tuner object with given parameters"""
-        self._rnd_seed(seed=seed)
+        self._rnd_seed(seed=seed[0])
+
+        # ---- ---- ---- ---- ---- #
+        # @ -> Setup Num Workers
+        # ---- ---- ---- ---- ---- #
+
+        self._num_worker_handlers = num_workers
 
         # ---- ---- ---- ---- ---- #
         # @ -> Setup Run Idenfifier
@@ -216,7 +241,12 @@ class ProtoTuner(ProtoTuner):
         # @ -> Integrate Environ
         # ---- ---- ---- ---- ---- #
 
-        self._environ, self._environ_info = self._integrate_environ(environ_prefix)
+        # returns list of envs and infos
+        envs_list, envs_info_list = self._integrate_environ(
+            environ_prefix, num_workers, seed
+        )
+        self._environ = envs_list
+        self._environ_info = envs_info_list[0]
 
         # ---- ---- ---- ---- ---- #
         # @ -> Access Attr Keys
@@ -238,7 +268,7 @@ class ProtoTuner(ProtoTuner):
         gamma = self._conf.learner.training.gamma
         trainable: str = self._conf.trainable.construct.impl
         self._trainable: trainable.Trainable = self._integrate_trainable(
-            trainable, n_agents, obs_shape, state_shape, gamma, seed
+            trainable, n_agents, obs_shape, state_shape, gamma, seed[0]
         )
 
         # ---- ---- ---- ---- ---- #
@@ -248,7 +278,7 @@ class ProtoTuner(ProtoTuner):
         model_conf = self._conf.learner.model
         exp_conf = self._conf.learner.exploration
         self._mac = self._integrate_multi_agent_cortex(
-            model_conf, exp_conf, n_agents, n_actions, obs_shape, seed
+            model_conf, exp_conf, n_agents, n_actions, obs_shape, seed[0]
         )
 
         # ---- ---- ---- ---- ---- #
@@ -355,14 +385,15 @@ class ProtoTuner(ProtoTuner):
             mem_size,
             sampling_method,
             self._accelerator,
-            seed,
+            seed[0],
         )
 
         # ---- ---- ---- ---- ---- #
         # @ -> Ray Store and Actors
         # ---- ---- ---- ---- ---- #
 
-        self.update_ray_object_store()
+        self.put_environ_into_object_store()
+        self.put_cortex_into_object_store()
 
         # ---- ---- ---- ---- ---- #
         # @ -> Setup Worker
@@ -375,6 +406,7 @@ class ProtoTuner(ProtoTuner):
             mac_ref,
             memory_blueprint,
             self._accelerator,
+            num_workers,
         )
 
         # ---- ---- ---- ---- ---- #
@@ -383,7 +415,7 @@ class ProtoTuner(ProtoTuner):
 
         replay_save_path: Path = constants.REPLAY_DIR / self._run_identifier
         self._evaluator = self._integrate_evaluator(
-            self._interaction_worker,
+            self._interaction_worker[0],
         )
 
     def _synchronize_target_nets(self):
@@ -395,20 +427,20 @@ class ProtoTuner(ProtoTuner):
     # @ -> Methods for interaction with ray engine
     # --------------------------------------------------
 
-    def update_ray_object_store(self) -> None:
-        """put necessary components into ray object store"""
+    def put_environ_into_object_store(self) -> None:
+        """put environments into object store in ray"""
+        env_refs = []
+        for env in self._environ:
+            env_ref = ray.put(env)
+            env_refs.append(env_ref)
+        self._ray_map["env"] = env_refs
 
-        env_ref = ray.put(self._environ)
+    def put_cortex_into_object_store(self) -> None:
+        """put cortex component into ray object store"""
         mac_ref = ray.put(self._mac)
+        self._ray_map["mac"] = mac_ref
 
-        # create a map with references
-        ray_map = {
-            "env": env_ref,
-            "mac": mac_ref,
-        }
-        self._ray_map = ray_map
-
-    def spawn_worker_actors(
+    def spawn_actor_handlers(
         self,
         n_actors: int,
         env_ref: ray.ObjectRef,
@@ -419,9 +451,11 @@ class ProtoTuner(ProtoTuner):
         """spawn number of actors"""
         pass
 
-    def update_actors_cortes(self, cortex: ray.ObjectRef) -> None:
+    def update_cortex_in_actor_handlers(self, cortex_ref: ray.ObjectRef) -> None:
         """update actors of a new reference to cortex"""
-        pass
+        assert self._interaction_worker is not None, "Worker can not be None"
+        for worker in self._interaction_worker:
+            worker.update_cortex_object.remote(cortex_ref)
 
     # --------------------------------------------------
     # @ -> Methods for saving and loading models

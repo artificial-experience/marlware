@@ -38,10 +38,18 @@ class Tuner(ProtoTuner):
         logger: Logger,
         run_id: str,
         *,
+        num_workers: Optional[int] = 4,
         seed: Optional[int] = None,
     ) -> None:
         """based on conf delegate tuner object with given parameters"""
-        super().commit(environ_prefix, accelerator, logger, run_id, seed=seed)
+        super().commit(
+            environ_prefix,
+            accelerator,
+            logger,
+            run_id,
+            num_workers=num_workers,
+            seed=seed,
+        )
 
     # --------------------------------------------------
     # @ -> Tuner Optimization Mechanism
@@ -92,14 +100,15 @@ class Tuner(ProtoTuner):
 
             # Run for a whole episode at a time
             with torch.no_grad():
-                worker_output_ref = self._interaction_worker.collect_rollout.remote(
-                    test_mode=False
-                )
+                worker_output_ref = [
+                    worker.collect_rollout.remote(test_mode=False)
+                    for worker in self._interaction_worker
+                ]
 
-                worker_output = ray.get(worker_output_ref)
-                memory_shard = worker_output[0]
+                worker_futures = ray.get(worker_output_ref)
+                memory_shards = [future[0] for future in worker_futures]
 
-                self._memory_cluster.insert_memory_shard(memory_shard)
+                self._memory_cluster.insert_memory_shard(memory_shards)
 
             if self._memory_cluster.can_sample(batch_size):
                 shard_cluster = self._memory_cluster.sample(batch_size)
@@ -176,9 +185,10 @@ class Tuner(ProtoTuner):
                 # @ -> Update mac in actors
                 # ---- ---- ---- ---- ---- #
 
-                self.update_ray_object_store()
+                # since cortex is updated at each grad iteration, we have to update the cortex obj
+                self.put_cortex_into_object_store()
                 updated_mac_ref = self._ray_map["mac"]
-                self._interaction_worker.update_cortex_object.remote(updated_mac_ref)
+                self.update_cortex_in_actor_handlers(updated_mac_ref)
 
             # ---- ---- ---- ---- ---- #
             # @ -> Log Stats
@@ -191,4 +201,5 @@ class Tuner(ProtoTuner):
             rollout += 1
 
         # close environment once the work is done
-        self._environ.close()
+        for env in self._environ:
+            env.close()
