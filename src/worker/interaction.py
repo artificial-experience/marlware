@@ -37,6 +37,7 @@ class InteractionWorker:
         memory_blueprint: dict,
         *,
         device: Optional[str] = "cpu",
+        replay_save_path: Optional[str] = None,
     ) -> None:
         """ensemble interaction worker"""
         self._env = env
@@ -47,6 +48,10 @@ class InteractionWorker:
         # track episode and environment timesteps
         self._episode_ts = 0
         self._env_ts = 0
+
+        # replay save path
+        if replay_save_path is not None:
+            self._env.replay_dir = replay_save_path
 
     def reset(self):
         """set counter to 0, reset env and create new rollout memory"""
@@ -59,13 +64,18 @@ class InteractionWorker:
 
         return new_mem_shard
 
-    def collect_rollout(self, test_mode: bool = False) -> Tuple[MemoryShard, dict]:
+    def collect_rollout(
+        self, test_mode: bool = False, save_replay: bool = False
+    ) -> Tuple[MemoryShard, dict]:
         """collect single episode of data and store in cache"""
         memory_shard = self.reset()
 
         metrics = defaultdict(int)
         terminated = False
         episode_return = 0
+
+        if save_replay:
+            self._env.save_replay()
 
         # cortex will operate on a single batch of episodes in order to compute actions
         self._cortex.init_hidden(batch_size=1)
@@ -153,3 +163,11 @@ class InteractionWorker:
     def update_cortex_object(self, cortex) -> None:
         """update cortex instance"""
         self._cortex = cortex
+
+    def save_replay(self) -> None:
+        """record replay"""
+        self._env.save_replay()
+
+    def fetch_elapsed_timesteps(self) -> int:
+        """get worker passed timesteps"""
+        return self._env_ts

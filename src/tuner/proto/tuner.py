@@ -144,16 +144,19 @@ class ProtoTuner(ProtoTuner):
         memory_blueprint: dict,
         accelerator: str,
         num_workers: int,
+        replay_save_path: Path,
     ) -> InteractionWorker:
         """create worker instance to be used for interaction with env"""
         worker_handlers = []
         for worker_id in range(num_workers):
+            worker_replay_save_dir = replay_save_path / f"worker-{worker_id}"
             worker = InteractionWorker.remote()
             worker.ensemble_interaction_worker.remote(
                 env=env[worker_id],
                 cortex=cortex,
                 memory_blueprint=memory_blueprint,
                 device=accelerator,
+                replay_save_path=worker_replay_save_dir,
             )
             worker_handlers.append(worker)
         return worker_handlers
@@ -399,19 +402,20 @@ class ProtoTuner(ProtoTuner):
 
         env_ref = self._ray_map["env"]
         mac_ref = self._ray_map["mac"]
+        replay_save_path: Path = constants.REPLAY_DIR / self._run_identifier
         self._interaction_worker = self._integrate_worker(
             env_ref,
             mac_ref,
             memory_blueprint,
             self._accelerator,
             num_workers,
+            replay_save_path,
         )
 
         # ---- ---- ---- ---- ---- #
         # @ -> Integrate Evaluator
         # ---- ---- ---- ---- ---- #
 
-        replay_save_path: Path = constants.REPLAY_DIR / self._run_identifier
         self._evaluator = self._integrate_evaluator(
             self._interaction_worker[0],
         )
@@ -438,16 +442,14 @@ class ProtoTuner(ProtoTuner):
         mac_ref = ray.put(self._mac)
         self._ray_map["mac"] = mac_ref
 
-    def spawn_actor_handlers(
-        self,
-        n_actors: int,
-        env_ref: ray.ObjectRef,
-        mac_ref: ray.ObjectRef,
-        memory_blueprint: dict,
-        accelerator: str,
-    ) -> List[InteractionWorker]:
-        """spawn number of actors"""
-        pass
+    def fetch_total_elapsed_timesteps(self) -> int:
+        """get summ of all timesteps passed from workers"""
+        timesteps = []
+        for worker in self._interaction_worker:
+            ts_future = worker.fetch_elapsed_timesteps.remote()
+            worker_ts = ray.get(ts_future)
+            timesteps.append(worker_ts)
+        return sum(timesteps)
 
     def update_cortex_in_actor_handlers(self, cortex_ref: ray.ObjectRef) -> None:
         """update actors of a new reference to cortex"""

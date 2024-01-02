@@ -23,14 +23,26 @@ class CoreEvaluator:
         self._metrics = defaultdict(int)
 
     def evaluate(
-        self, rollout: int, n_games: Optional[int] = 10
+        self,
+        rollout: int,
+        n_games: Optional[int] = 10,
+        replay_save_freq: Optional[int] = 10,
     ) -> tuple[bool, defaultdict[Any, int]]:
         """evaluate current model on n_games"""
         evaluation_scores = []
         won_battles = []
 
         for game_idx in range(n_games):
-            worker_output_ref = self._worker.collect_rollout.remote(test_mode=True)
+            # save replay
+            if game_idx % replay_save_freq == 0:
+                worker_output_ref = self._worker.collect_rollout.remote(
+                    test_mode=True, save_replay=True
+                )
+            else:
+                worker_output_ref = self._worker.collect_rollout.remote(
+                    test_mode=True, save_replay=False
+                )
+
             worker_output = ray.get(worker_output_ref)
             metrics = worker_output[1]
 

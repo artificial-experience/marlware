@@ -66,21 +66,22 @@ class Tuner(ProtoTuner):
     ) -> None:
         """optimize trainable within N rollouts"""
         rollout = 0
+        timesteps = 0
 
         # change later
-        while True:
+        while timesteps <= n_timesteps:
             # ---- ---- ---- ---- ---- #
             # @ -> Synchronize Nets
             # ---- ---- ---- ---- ---- #
 
-            if rollout % self._target_net_update_sched == 0:
+            if rollout % self._target_net_update_sched == 0 and rollout >= warmup:
                 self._synchronize_target_nets()
 
             # ---- ---- ---- ---- ---- #
             # @ -> Evaluate Performance
             # ---- ---- ---- ---- ---- #
 
-            if rollout % eval_schedule == 0:
+            if rollout % eval_schedule == 0 and rollout >= warmup:
                 evaluator_output_ref = self._evaluator.evaluate.remote(
                     rollout=rollout, n_games=eval_n_games
                 )
@@ -121,7 +122,7 @@ class Tuner(ProtoTuner):
                         # Insert each memory shard into the buffer as soon as it's ready
                         self._memory_cluster.insert_memory_shard(memory_shard)
 
-            if self._memory_cluster.can_sample(batch_size) and rollout > warmup:
+            if self._memory_cluster.can_sample(batch_size) and rollout >= warmup:
                 shard_cluster = self._memory_cluster.sample(batch_size)
 
                 # Truncate batch to only filled timesteps
@@ -183,10 +184,11 @@ class Tuner(ProtoTuner):
                 )
                 self._optimizer.step()
 
-                # TODO: change this line of code
+                timesteps = self.fetch_total_elapsed_timesteps()
+
                 self._trace_logger.log_stat(
                     "timesteps_passed",
-                    -1,
+                    timesteps,
                     rollout,
                 )
                 self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
@@ -211,6 +213,6 @@ class Tuner(ProtoTuner):
             # update episode counter ( works for synchronous training )
             rollout += 1
 
-        # close environment once the work is done
-        for env in self._environ:
-            env.close()
+            # close environment once the work is done
+            for env in self._environ:
+                env.close()
