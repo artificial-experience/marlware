@@ -1,6 +1,6 @@
 import random
 from typing import Optional
-from typing import Tuple
+from typing import Union
 
 import numpy as np
 import torch
@@ -139,7 +139,6 @@ class MemoryCluster:
     def ensemble_memory_cluster(
         self,
         *,
-        device: Optional[str] = "cpu",
         sampling_method: Optional[str] = "uniform",
         seed: Optional[int] = None,
     ) -> None:
@@ -153,11 +152,19 @@ class MemoryCluster:
 
         self._shards = np.empty(self._mem_size, dtype=object)
 
-    def insert_memory_shard(self, mem_shard: MemoryShard) -> None:
+    def insert_memory_shard(self, mem_shard: Union[MemoryShard, list]) -> None:
         """insert memory shard into cluster"""
-        mem_index = self._mem_pointer % self._mem_size
-        self._shards[mem_index] = mem_shard
-        self._mem_pointer += 1
+
+        if isinstance(mem_shard, MemoryShard):
+            mem_index = self._mem_pointer % self._mem_size
+            self._shards[mem_index] = mem_shard
+            self._mem_pointer += 1
+        # handle list of memory shards
+        else:
+            for shard in mem_shard:
+                mem_index = self._mem_pointer % self._mem_size
+                self._shards[mem_index] = shard
+                self._mem_pointer += 1
 
     def can_sample(self, batch_size: int) -> bool:
         """check if there is enough memories to sample from"""

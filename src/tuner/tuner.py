@@ -1,6 +1,7 @@
 from logging import Logger
 from typing import Optional
 
+import ray
 import torch
 from omegaconf import OmegaConf
 
@@ -37,58 +38,91 @@ class Tuner(ProtoTuner):
         logger: Logger,
         run_id: str,
         *,
+        num_workers: Optional[int] = 4,
         seed: Optional[int] = None,
     ) -> None:
         """based on conf delegate tuner object with given parameters"""
-        super().commit(environ_prefix, accelerator, logger, run_id, seed=seed)
+        super().commit(
+            environ_prefix,
+            accelerator,
+            logger,
+            run_id,
+            num_workers=num_workers,
+            seed=seed,
+        )
 
     # --------------------------------------------------
-    # @ -> Tuner optimization mechanism
+    # @ -> Tuner Optimization Mechanism
     # --------------------------------------------------
 
     def optimize(
         self,
         n_timesteps: int,
         batch_size: int,
+        warmup: int,
         eval_schedule: int,
         eval_n_games: int,
         display_freq: int,
     ) -> None:
         """optimize trainable within N rollouts"""
         rollout = 0
-        while self._interaction_worker.environ_timesteps <= n_timesteps:
+        timesteps = 0
+
+        # change later
+        while timesteps <= n_timesteps:
             # ---- ---- ---- ---- ---- #
             # @ -> Synchronize Nets
             # ---- ---- ---- ---- ---- #
 
-            if rollout % self._target_net_update_sched == 0:
+            if rollout % self._target_net_update_sched == 0 and rollout >= warmup:
                 self._synchronize_target_nets()
 
             # ---- ---- ---- ---- ---- #
             # @ -> Evaluate Performance
             # ---- ---- ---- ---- ---- #
 
-            if rollout % eval_schedule == 0:
-                is_new_best = self._evaluator.evaluate(
+            if rollout % eval_schedule == 0 and rollout >= warmup:
+                evaluator_output_ref = self._evaluator.evaluate.remote(
                     rollout=rollout, n_games=eval_n_games
                 )
 
+                evaluator_output = ray.get(evaluator_output_ref)
+
+                is_new_best = evaluator_output[0]
                 if is_new_best:
                     model_identifier = "best_model.pt"
                     self.save_models(model_identifier)
+
+                evaluator_metrics = evaluator_output[1]
+                self.log_metrics(evaluator_metrics)
 
             # ---- ---- ---- ---- ---- #
             # @ -> Gather Rollouts
             # ---- ---- ---- ---- ---- #
 
-            # Run for a whole episode at a time
+            # Run for a whole episode at a time per worker instance
             with torch.no_grad():
-                memory_shard, _ = self._interaction_worker.collect_rollout(
-                    test_mode=False
-                )
-                self._memory_cluster.insert_memory_shard(memory_shard)
+                worker_output_ref = [
+                    worker.collect_rollout.remote(test_mode=False)
+                    for worker in self._interaction_worker
+                ]
 
-            if self._memory_cluster.can_sample(batch_size):
+                # Loop until all worker futures are processed
+                while worker_output_ref:
+                    # Use ray.wait to get any finished task
+                    finished, worker_output_ref = ray.wait(
+                        worker_output_ref, num_returns=1, timeout=None
+                    )
+
+                    # Process each finished task
+                    for future in finished:
+                        result = ray.get(future)
+                        memory_shard = result[0]
+
+                        # Insert each memory shard into the buffer as soon as it's ready
+                        self._memory_cluster.insert_memory_shard(memory_shard)
+
+            if self._memory_cluster.can_sample(batch_size) and rollout >= warmup:
                 shard_cluster = self._memory_cluster.sample(batch_size)
 
                 # Truncate batch to only filled timesteps
@@ -150,13 +184,24 @@ class Tuner(ProtoTuner):
                 )
                 self._optimizer.step()
 
+                timesteps = self.fetch_total_elapsed_timesteps()
+
                 self._trace_logger.log_stat(
                     "timesteps_passed",
-                    self._interaction_worker.environ_timesteps,
+                    timesteps,
                     rollout,
                 )
                 self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
                 self._trace_logger.log_stat("gradient_norm", grad_norm, rollout)
+
+                # ---- ---- ---- ---- ---- #
+                # @ -> Update mac in actors
+                # ---- ---- ---- ---- ---- #
+
+                # since cortex is updated at each grad iteration, we have to update the cortex obj
+                self.put_cortex_into_object_store()
+                updated_mac_ref = self._ray_map["mac"]
+                self.update_cortex_in_actor_handlers(updated_mac_ref)
 
             # ---- ---- ---- ---- ---- #
             # @ -> Log Stats
@@ -169,4 +214,9 @@ class Tuner(ProtoTuner):
             rollout += 1
 
         # close environment once the work is done
-        self._environ.close()
+        self.close_envs()
+
+    def close_envs(self) -> None:
+        """close all existing environments"""
+        for env in self._environ:
+            env.close()

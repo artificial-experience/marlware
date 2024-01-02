@@ -2,7 +2,6 @@ from functools import partialmethod
 from typing import Dict
 from typing import Optional
 
-import numpy as np
 import torch
 from omegaconf import OmegaConf
 

@@ -6,7 +6,6 @@ from omegaconf import OmegaConf
 from torch.nn import functional as F
 
 from src.transforms import OneHotTransform
-from src.util import methods
 from src.util.constants import AttrKey
 
 
@@ -52,6 +51,7 @@ class RecurrentQLearner:
         actions = feed[data_attr._ACTIONS.value]
 
         bs, time, n_agents, n_q_values = avail_actions.shape
+        accelerator = actions.device
 
         # ensure proper shape of tensors - without time as this dimension is 1
         observations = observations.view(bs, n_agents, -1)
@@ -62,7 +62,9 @@ class RecurrentQLearner:
         one_hot_actions = one_hot.transform(actions).view(bs, n_agents, -1)
 
         agent_identifier_one_hot = self.one_hot_identifier.view(1, -1)
-        agent_identifier_one_hot = agent_identifier_one_hot.repeat(bs, 1)
+        agent_identifier_one_hot = agent_identifier_one_hot.repeat(bs, 1).to(
+            accelerator
+        )
         serialized_identifier = torch.argmax(agent_identifier_one_hot)
 
         # get current agent's observations slices

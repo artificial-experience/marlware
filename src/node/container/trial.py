@@ -9,10 +9,12 @@ class RuntimeConfig:
     checkpoint_frequency: int
     n_games: int
     display_freq: int
+    warmup: int
 
 
 @dataclass
 class DeviceConfig:
+    num_workers: int
     accelerator: str
     seed: int
 
