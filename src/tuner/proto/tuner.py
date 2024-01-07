@@ -162,10 +162,10 @@ class ProtoTuner(ProtoTuner):
         return worker_handlers
 
     def _integrate_environ(
-        self, map_name: str, num_envs: int, seed: list
+        self, env_conf: str, num_envs: int, seed: list
     ) -> SC2Environ:
-        """based on map_name create sc2 environ instance"""
-        env_manager = SC2Environ(map_name)
+        """based on env conf create sc2 environ instance"""
+        env_manager = SC2Environ(env_conf)
         env_list = []
         env_info_list = []
         for env_idx in range(num_envs):
@@ -202,7 +202,7 @@ class ProtoTuner(ProtoTuner):
 
     def commit(
         self,
-        environ_prefix: str,
+        environ_conf: str,
         accelerator: str,
         logger: Logger,
         run_id: str,
@@ -243,7 +243,7 @@ class ProtoTuner(ProtoTuner):
 
         # returns list of envs and infos
         envs_list, envs_info_list = self._integrate_environ(
-            environ_prefix, num_workers, seed
+            environ_conf, num_workers, seed
         )
         self._environ = envs_list
         self._environ_info = envs_info_list[0]

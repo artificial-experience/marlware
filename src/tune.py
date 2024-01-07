@@ -82,10 +82,8 @@ def runner(cfg: DictConfig) -> None:
     num_workers = device.get("num_workers", 1)
     warmup = runtime.get("warmup", 0)
 
-    environ_map = environ_conf.map.get("prefix", "3m")
-
     tuner = delegate_tuner(
-        environ_map,
+        environ_conf,
         trainable_conf,
         accelerator,
         trace_logger,
