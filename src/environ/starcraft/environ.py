@@ -28,7 +28,7 @@ class SC2Environ:
         seed = seed
         map_name = self._conf.get("map_name", "8m")
         continuing_episode = self._conf.get("continuing_episode", False)
-        difficulty = self._conf.get("difficulty", "7m")
+        difficulty = self._conf.get("difficulty", "7")
         game_version = self._conf.get("game_version", None)
         move_amount = self._conf.get("move_amount", 2)
         obs_all_health = self._conf.get("obs_all_health", True)
