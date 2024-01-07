@@ -23,7 +23,7 @@ class SC2Environ:
 
     def create_env_instance(
         self, *, seed: Optional[int] = None
-    ) -> Tuple[StarCraft2Env, Dict]:
+    ) -> Tuple[StarCraftCapabilityEnvWrapper, Dict]:
         """create sc2 environ based on passed environ config and return along with info"""
         seed = seed
         map_name = self._conf.get("map_name", "8m")

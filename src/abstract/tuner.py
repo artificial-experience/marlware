@@ -10,7 +10,7 @@ class ProtoTuner(ABC):
     @abstractmethod
     def commit(
         self,
-        environ_prefix: str,
+        env_conf: str,
         accelerator: str,
         logger: Logger,
         *,

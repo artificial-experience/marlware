@@ -202,7 +202,7 @@ class ProtoTuner(ProtoTuner):
 
     def commit(
         self,
-        environ_conf: str,
+        env_conf: str,
         accelerator: str,
         logger: Logger,
         run_id: str,
@@ -242,9 +242,7 @@ class ProtoTuner(ProtoTuner):
         # ---- ---- ---- ---- ---- #
 
         # returns list of envs and infos
-        envs_list, envs_info_list = self._integrate_environ(
-            environ_conf, num_workers, seed
-        )
+        envs_list, envs_info_list = self._integrate_environ(env_conf, num_workers, seed)
         self._environ = envs_list
         self._environ_info = envs_info_list[0]
 

@@ -14,7 +14,7 @@ from util import methods
 
 
 def delegate_tuner(
-    environ_prefix: str,
+    env_conf: str,
     configuration: OmegaConf,
     accelerator: str,
     trace_logger: Logger,
@@ -26,10 +26,10 @@ def delegate_tuner(
     tuner = Tuner(configuration)
 
     timestamp = methods.get_current_timestamp()
-    run_identifier = f"marlverse-run-{environ_prefix}-{timestamp}"
+    run_identifier = f"marlware-run-qmix-{timestamp}"
 
     tuner.commit(
-        environ_prefix=environ_prefix,
+        env_conf=env_conf,
         accelerator=accelerator,
         logger=trace_logger,
         run_id=run_identifier,
