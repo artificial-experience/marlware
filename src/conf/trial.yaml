@@ -23,8 +23,9 @@ defaults:
 
 rollout:
   train:
-    n_timesteps: 4_000_000
+    n_timesteps: 10_000_000
     display_freq: 200
+    warmup: 100
   test:
     eval_schedule: 1_000
     checkpoint_frequency: 200
@@ -36,4 +37,11 @@ rollout:
 
 device:
   accelerator: "cpu"
-  seed: 94
+  num_workers: 6
+  seed:
+    - 91
+    - 92
+    - 93
+    - 94
+    - 95
+    - 96

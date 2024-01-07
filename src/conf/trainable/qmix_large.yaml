@@ -1,0 +1,42 @@
+# --------------------------------- #
+# ---- TRAINABLE CONFIGURATION ---- #
+# --------------------------------- #
+
+trainable:
+  # construct class to be used for optimization
+  construct:
+    impl: OneStepQmix
+  hypernetwork:
+    model:
+      embedding_dim: 256
+      n_layers: 2 # [ 1, 2 ]
+  mixer:
+    model:
+      embedding_dim: 64
+
+# ------------------------------- #
+# ---- LEARNER CONFIGURATION ---- #
+# ------------------------------- #
+
+learner:
+  training:
+    lr: 1e-3
+    gamma: 0.99
+    grad_clip: 10.0
+    target_net_update_shedule: 15
+  model:
+    rnn_hidden_dim: 256
+  exploration:
+    epsilon_start: 1.0
+    epsilon_min: 0.05
+    epsilon_anneal_steps: 100_000
+
+# ------------------------------ #
+# ---- BUFFER CONFIGURATION ---- #
+# ------------------------------ #
+
+buffer:
+  mem_size: 5_000
+  batch_size: 128
+  prioritized: false
+  mode: "uniform" # [ "uniform", "batch", "prioritized" ]

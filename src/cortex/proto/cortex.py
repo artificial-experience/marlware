@@ -1,14 +1,11 @@
 import copy
 import random
-from functools import partialmethod
 from pathlib import Path
-from typing import Dict
 from typing import List
 from typing import Optional
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from omegaconf import OmegaConf
 
 from src.abstract import ProtoCortex
@@ -16,7 +13,6 @@ from src.heuristic.policy import EpsilonGreedy
 from src.learner import RecurrentQLearner
 from src.net import DRQN
 from src.util import methods
-from src.util.constants import AttrKey
 
 
 class ProtoCortex(ProtoCortex):
@@ -117,10 +113,16 @@ class ProtoCortex(ProtoCortex):
         """return eval net optimization params"""
         return self._eval_drqn_network.parameters()
 
-    def move_to_cuda(self):
-        """move models to cuda device"""
-        self._eval_drqn_network.cuda()
-        self._target_drqn_network.cuda()
+    def move_to_device(self, device=None):
+        """
+        Move models to specified device.
+        If no device is specified, it defaults to CUDA if available, else CPU.
+        """
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self._eval_drqn_network.to(device)
+        self._target_drqn_network.to(device)
 
     def init_hidden(self, batch_size: int) -> None:
         """set internal hidden state parameters to zero"""

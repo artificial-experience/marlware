@@ -1,14 +1,14 @@
 from logging import Logger
 from typing import Optional
 
-import numpy as np
+import ray
 import torch
 from omegaconf import OmegaConf
 
 from .proto import ProtoTuner
 
 
-class SyncTuner(ProtoTuner):
+class Tuner(ProtoTuner):
     """
     Synchronous tuner class meant to optimize trainable w.r.t objective function
 
@@ -24,7 +24,7 @@ class SyncTuner(ProtoTuner):
         :param [optimizer]: optimizer used to backward pass grads through eval nets
         :param [params]: eval nets parameters
         :param [grad_clip]: gradient clip to prevent exploding gradients and divergence
-        :param [trajectory_worker]: worker used to gather trajectories from environ
+        :param [interaction_worker]: worker used to gather trajectories from environ
 
     """
 
@@ -38,65 +38,98 @@ class SyncTuner(ProtoTuner):
         logger: Logger,
         run_id: str,
         *,
+        num_workers: Optional[int] = 4,
         seed: Optional[int] = None,
     ) -> None:
         """based on conf delegate tuner object with given parameters"""
-        super().commit(environ_prefix, accelerator, logger, run_id, seed=seed)
+        super().commit(
+            environ_prefix,
+            accelerator,
+            logger,
+            run_id,
+            num_workers=num_workers,
+            seed=seed,
+        )
 
     # --------------------------------------------------
-    # @ -> Tuner optimization mechanizm
+    # @ -> Tuner Optimization Mechanism
     # --------------------------------------------------
 
     def optimize(
         self,
         n_timesteps: int,
         batch_size: int,
+        warmup: int,
         eval_schedule: int,
-        checkpoint_freq: int,
         eval_n_games: int,
         display_freq: int,
-    ) -> np.ndarray:
+    ) -> None:
         """optimize trainable within N rollouts"""
         rollout = 0
-        while self._trajectory_worker.t_env <= n_timesteps:
+        timesteps = 0
+
+        # change later
+        while timesteps <= n_timesteps:
             # ---- ---- ---- ---- ---- #
             # @ -> Synchronize Nets
             # ---- ---- ---- ---- ---- #
 
-            if rollout % self._target_net_update_sched == 0:
+            if rollout % self._target_net_update_sched == 0 and rollout >= warmup:
                 self._synchronize_target_nets()
 
             # ---- ---- ---- ---- ---- #
             # @ -> Evaluate Performance
             # ---- ---- ---- ---- ---- #
 
-            if rollout % eval_schedule == 0:
-                is_new_best = self._evaluator.evaluate(
+            if rollout % eval_schedule == 0 and rollout >= warmup:
+                evaluator_output_ref = self._evaluator.evaluate.remote(
                     rollout=rollout, n_games=eval_n_games
                 )
 
+                evaluator_output = ray.get(evaluator_output_ref)
+
+                is_new_best = evaluator_output[0]
                 if is_new_best:
                     model_identifier = "best_model.pt"
                     self.save_models(model_identifier)
+
+                evaluator_metrics = evaluator_output[1]
+                self.log_metrics(evaluator_metrics)
 
             # ---- ---- ---- ---- ---- #
             # @ -> Gather Rollouts
             # ---- ---- ---- ---- ---- #
 
-            # Run for a whole episode at a time
+            # Run for a whole episode at a time per worker instance
             with torch.no_grad():
-                episode_batch = self._trajectory_worker.run()
-                self._memory.insert_episode_batch(episode_batch)
+                worker_output_ref = [
+                    worker.collect_rollout.remote(test_mode=False)
+                    for worker in self._interaction_worker
+                ]
 
-            if self._memory.can_sample(batch_size):
-                episode_sample = self._memory.sample(batch_size)
+                # Loop until all worker futures are processed
+                while worker_output_ref:
+                    # Use ray.wait to get any finished task
+                    finished, worker_output_ref = ray.wait(
+                        worker_output_ref, num_returns=1, timeout=None
+                    )
+
+                    # Process each finished task
+                    for future in finished:
+                        result = ray.get(future)
+                        memory_shard = result[0]
+
+                        # Insert each memory shard into the buffer as soon as it's ready
+                        self._memory_cluster.insert_memory_shard(memory_shard)
+
+            if self._memory_cluster.can_sample(batch_size) and rollout >= warmup:
+                shard_cluster = self._memory_cluster.sample(batch_size)
 
                 # Truncate batch to only filled timesteps
-                max_ep_t = episode_sample.max_t_filled()
-                episode_sample = episode_sample[:, :max_ep_t]
+                max_ep_t = shard_cluster.max_t_filled()
+                shard_cluster = shard_cluster[:, :max_ep_t]
 
-                if episode_sample.device != self._accelerator:
-                    episode_sample.to(self._accelerator)
+                shard_cluster.override_data_device(self._accelerator)
 
                 # ---- ---- ---- ---- ---- #
                 # @ -> Calculate Q-Vals
@@ -108,10 +141,9 @@ class SyncTuner(ProtoTuner):
                 timewise_eval_estimates = []
                 timewise_target_estimates = []
 
-                max_seq_length = episode_sample.max_seq_length
-                for seq_t in range(max_seq_length):
+                for seq_t in range(max_ep_t):
                     # timewise slices of episodes
-                    episode_time_slice = episode_sample[:, seq_t]
+                    episode_time_slice = shard_cluster[:, seq_t]
 
                     eval_net_q_estimates = self._mac.estimate_eval_q_vals(
                         feed=episode_time_slice
@@ -141,7 +173,7 @@ class SyncTuner(ProtoTuner):
                 t_timewise_target_estimates = t_timewise_target_estimates[:, 1:]
 
                 trainable_loss = self._trainable.calculate_loss(
-                    feed=episode_sample,
+                    feed=shard_cluster,
                     eval_q_vals=t_timewise_eval_estimates,
                     target_q_vals=t_timewise_target_estimates,
                 )
@@ -152,11 +184,24 @@ class SyncTuner(ProtoTuner):
                 )
                 self._optimizer.step()
 
+                timesteps = self.fetch_total_elapsed_timesteps()
+
                 self._trace_logger.log_stat(
-                    "timesteps_passed", self._trajectory_worker.t_env, rollout
+                    "timesteps_passed",
+                    timesteps,
+                    rollout,
                 )
                 self._trace_logger.log_stat("trainable_loss", trainable_loss, rollout)
                 self._trace_logger.log_stat("gradient_norm", grad_norm, rollout)
+
+                # ---- ---- ---- ---- ---- #
+                # @ -> Update mac in actors
+                # ---- ---- ---- ---- ---- #
+
+                # since cortex is updated at each grad iteration, we have to update the cortex obj
+                self.put_cortex_into_object_store()
+                updated_mac_ref = self._ray_map["mac"]
+                self.update_cortex_in_actor_handlers(updated_mac_ref)
 
             # ---- ---- ---- ---- ---- #
             # @ -> Log Stats
@@ -169,4 +214,9 @@ class SyncTuner(ProtoTuner):
             rollout += 1
 
         # close environment once the work is done
-        self._environ.close()
+        self.close_envs()
+
+    def close_envs(self) -> None:
+        """close all existing environments"""
+        for env in self._environ:
+            env.close()

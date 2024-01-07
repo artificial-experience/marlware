@@ -1,29 +1,27 @@
-import logging
 import os
 import random
-from itertools import chain
+from collections import defaultdict
 from logging import Logger
 from pathlib import Path
 from typing import List
 from typing import Optional
 
 import numpy as np
+import ray
 import torch
 from omegaconf import OmegaConf
-from torchviz import make_dot
 
 from src import trainable
 from src.abstract import ProtoTuner
 from src.cortex import RecQCortex
 from src.environ.starcraft import SC2Environ
 from src.evaluator import CoreEvaluator
-from src.memory.replay import ReplayBuffer
-from src.memory.worker import EpisodeRunner
+from src.memory.cluster import MemoryCluster
 from src.registry import trainable_global_registry
 from src.transforms import OneHotTransform
 from src.util import constants
-from src.util import methods
 from src.util.constants import AttrKey
+from src.worker import InteractionWorker
 
 
 class ProtoTuner(ProtoTuner):
@@ -44,7 +42,7 @@ class ProtoTuner(ProtoTuner):
         :param [optimizer]: optimizer used to backward pass grads through eval nets
         :param [params]: eval nets parameters
         :param [grad_clip]: gradient clip to prevent exploding gradients and divergence
-        :param [trajectory_worker]: worker used to gather trajectories from environ
+        :param [interaction_worker]: worker used to gather trajectories from environ
 
     """
 
@@ -54,7 +52,7 @@ class ProtoTuner(ProtoTuner):
         # internal attrs
         self._trainable: trainable.Trainable = None
         self._mac = None
-        self._memory = None
+        self._memory_cluster = None
         self._environ = None
         self._environ_info = None
         self._trace_logger = None
@@ -67,13 +65,23 @@ class ProtoTuner(ProtoTuner):
         self._accelerator = "cpu"
 
         # trajectory worker
-        self._trajectory_worker = None
+        self._interaction_worker = None
 
         # evaluator
         self._evaluator = None
 
         # run identifier
         self._run_identifier = None
+
+        # ray sutff
+        self._ray_map = defaultdict(int)
+
+        # num workers
+        self._num_worker_handlers = 1
+
+    # --------------------------------------------------
+    # @ -> Methods for component integration
+    # --------------------------------------------------
 
     def _integrate_trainable(
         self,
@@ -121,50 +129,62 @@ class ProtoTuner(ProtoTuner):
     def _integrate_memory(
         self,
         mem_size: int,
-        scheme: dict,
-        groups: dict,
-        max_seq_length: int,
-        preprocess: dict,
-        accelerator: str,
+        sampling_method: str,
         seed: int,
-    ) -> ReplayBuffer:
+    ) -> MemoryCluster:
         """create instance of replay memory based on environ info and memory conf"""
-        memory = ReplayBuffer(
-            scheme=scheme,
-            groups=groups,
-            buffer_size=mem_size,
-            max_seq_length=max_seq_length + 1,
-            preprocess=preprocess,
-            device=accelerator,
-        )
+        memory = MemoryCluster(mem_size)
+        memory.ensemble_memory_cluster(sampling_method=sampling_method, seed=seed)
         return memory
 
     def _integrate_worker(
         self,
-        conf: OmegaConf,
-        logger: Logger,
-        env: SC2Environ,
-        env_info: dict,
-    ) -> EpisodeRunner:
+        env: List[ray.ObjectRef],
+        cortex: ray.ObjectRef,
+        memory_blueprint: dict,
+        accelerator: str,
+        num_workers: int,
+        replay_save_path: Path,
+    ) -> InteractionWorker:
         """create worker instance to be used for interaction with env"""
-        worker = EpisodeRunner(conf, logger, env, env_info)
-        return worker
+        worker_handlers = []
+        for worker_id in range(num_workers):
+            worker_replay_save_dir = replay_save_path / f"worker-{worker_id}"
+            worker = InteractionWorker.remote()
+            worker.ensemble_interaction_worker.remote(
+                env=env[worker_id],
+                cortex=cortex,
+                memory_blueprint=memory_blueprint,
+                device=accelerator,
+                replay_save_path=worker_replay_save_dir,
+            )
+            worker_handlers.append(worker)
+        return worker_handlers
 
-    def _integrate_environ(self, map_name: str) -> SC2Environ:
+    def _integrate_environ(
+        self, map_name: str, num_envs: int, seed: list
+    ) -> SC2Environ:
         """based on map_name create sc2 environ instance"""
         env_manager = SC2Environ(map_name)
-        env, env_info = env_manager.create_env_instance()
-        assert env is not None, "Environment cound not be created"
-        return env, env_info
+        env_list = []
+        env_info_list = []
+        for env_idx in range(num_envs):
+            env, env_info = env_manager.create_env_instance(seed=seed[env_idx])
+            assert env is not None, "Environment cound not be created"
+            assert env_info is not None, "Environment info cound not be created"
+
+            env_list.append(env)
+            env_info_list.append(env_info)
+
+        return env_list, env_info_list
 
     def _integrate_evaluator(
-        self, env: SC2Environ, env_info: dict, cortex: RecQCortex, logger: Logger
+        self,
+        worker: InteractionWorker,
     ) -> CoreEvaluator:
         """create evaluator instance"""
-        evaluator = CoreEvaluator()
-        evaluator.ensemble_evaluator(
-            env=env, env_info=env_info, cortex=cortex, logger=logger
-        )
+        evaluator = CoreEvaluator.remote(worker)
+        evaluator.ensemble_evaluator.remote()
         return evaluator
 
     def _rnd_seed(self, *, seed: Optional[int] = None):
@@ -176,6 +196,10 @@ class ProtoTuner(ProtoTuner):
             np.random.seed(seed)
             random.seed(seed)
 
+    # --------------------------------------------------
+    # @ -> Commit configuration for tuner instance
+    # --------------------------------------------------
+
     def commit(
         self,
         environ_prefix: str,
@@ -183,10 +207,17 @@ class ProtoTuner(ProtoTuner):
         logger: Logger,
         run_id: str,
         *,
-        seed: Optional[int] = None,
+        num_workers: Optional[int] = 4,
+        seed: Optional[list] = None,
     ) -> None:
         """based on conf delegate tuner object with given parameters"""
-        self._rnd_seed(seed=seed)
+        self._rnd_seed(seed=seed[0])
+
+        # ---- ---- ---- ---- ---- #
+        # @ -> Setup Num Workers
+        # ---- ---- ---- ---- ---- #
+
+        self._num_worker_handlers = num_workers
 
         # ---- ---- ---- ---- ---- #
         # @ -> Setup Run Idenfifier
@@ -210,7 +241,12 @@ class ProtoTuner(ProtoTuner):
         # @ -> Integrate Environ
         # ---- ---- ---- ---- ---- #
 
-        self._environ, self._environ_info = self._integrate_environ(environ_prefix)
+        # returns list of envs and infos
+        envs_list, envs_info_list = self._integrate_environ(
+            environ_prefix, num_workers, seed
+        )
+        self._environ = envs_list
+        self._environ_info = envs_info_list[0]
 
         # ---- ---- ---- ---- ---- #
         # @ -> Access Attr Keys
@@ -232,8 +268,9 @@ class ProtoTuner(ProtoTuner):
         gamma = self._conf.learner.training.gamma
         trainable: str = self._conf.trainable.construct.impl
         self._trainable: trainable.Trainable = self._integrate_trainable(
-            trainable, n_agents, obs_shape, state_shape, gamma, seed
+            trainable, n_agents, obs_shape, state_shape, gamma, seed[0]
         )
+        self._trainable.move_to_device(device=self._accelerator)
 
         # ---- ---- ---- ---- ---- #
         # @ -> Integrate Cortex
@@ -242,8 +279,9 @@ class ProtoTuner(ProtoTuner):
         model_conf = self._conf.learner.model
         exp_conf = self._conf.learner.exploration
         self._mac = self._integrate_multi_agent_cortex(
-            model_conf, exp_conf, n_agents, n_actions, obs_shape, seed
+            model_conf, exp_conf, n_agents, n_actions, obs_shape, seed[0]
         )
+        self._mac.move_to_device(device=self._accelerator)
 
         # ---- ---- ---- ---- ---- #
         # @ -> Gather Params
@@ -262,7 +300,7 @@ class ProtoTuner(ProtoTuner):
         # ---- ---- ---- ---- ---- #
 
         learning_rate = self._conf.learner.training.lr
-        # TODO: move alpha and eps to config file
+        # TODO: 2. move alpha and eps to config file
         self._optimizer = torch.optim.RMSprop(
             params=self._params, lr=learning_rate, alpha=0.99, eps=1e-5
         )
@@ -325,11 +363,18 @@ class ProtoTuner(ProtoTuner):
         groups = {data_attr._AGENT_GROUP.value: n_agents}
 
         # prepare preprocessing blueprint
-        preprocess = {
+        transforms = {
             data_attr._ACTIONS.value: (
                 data_attr._ACTIONS_ONEHOT_TRANSFORM.value,
                 [OneHotTransform(out_dim=n_actions)],
             )
+        }
+
+        memory_blueprint = {
+            data_attr._SCHEME.value: scheme,
+            data_attr._GROUP.value: groups,
+            data_attr._MAX_SEQ_LEN.value: max_seq_length,
+            data_attr._TRANSFORMS.value: transforms,
         }
 
         # ---- ---- ---- ---- ---- #
@@ -337,26 +382,34 @@ class ProtoTuner(ProtoTuner):
         # ---- ---- ---- ---- ---- #
 
         mem_size = self._conf.buffer[tuner_attr._MEM_SIZE.value]
-        self._memory = self._integrate_memory(
+        sampling_method = self._conf.buffer[tuner_attr._SAMPLING_METHOD.value]
+        self._memory_cluster = self._integrate_memory(
             mem_size,
-            scheme,
-            groups,
-            max_seq_length,
-            preprocess,
-            self._accelerator,
-            seed,
+            sampling_method,
+            seed[0],
         )
+
+        # ---- ---- ---- ---- ---- #
+        # @ -> Ray Store and Actors
+        # ---- ---- ---- ---- ---- #
+
+        self.put_environ_into_object_store()
+        self.put_cortex_into_object_store()
 
         # ---- ---- ---- ---- ---- #
         # @ -> Setup Worker
         # ---- ---- ---- ---- ---- #
 
-        worker_conf = self._conf.buffer
-        self._trajectory_worker = self._integrate_worker(
-            worker_conf, self._trace_logger, self._environ, self._environ_info
-        )
-        self._trajectory_worker.setup(
-            scheme, groups, preprocess, self._mac, self._accelerator
+        env_ref = self._ray_map["env"]
+        mac_ref = self._ray_map["mac"]
+        replay_save_path: Path = constants.REPLAY_DIR / self._run_identifier
+        self._interaction_worker = self._integrate_worker(
+            env_ref,
+            mac_ref,
+            memory_blueprint,
+            self._accelerator,
+            num_workers,
+            replay_save_path,
         )
 
         # ---- ---- ---- ---- ---- #
@@ -364,21 +417,45 @@ class ProtoTuner(ProtoTuner):
         # ---- ---- ---- ---- ---- #
 
         self._evaluator = self._integrate_evaluator(
-            self._environ, self._environ_info, self._mac, self._trace_logger
-        )
-        replay_save_path = constants.REPLAY_DIR / self._run_identifier
-        self._evaluator.setup(
-            scheme,
-            groups,
-            preprocess,
-            self._accelerator,
-            replay_save_path,
+            self._interaction_worker[0],
         )
 
     def _synchronize_target_nets(self):
         """synchronize target networks inside cortex and trainable"""
         self._trainable.synchronize_target_net()
         self._mac.synchronize_target_net()
+
+    # --------------------------------------------------
+    # @ -> Methods for interaction with ray engine
+    # --------------------------------------------------
+
+    def put_environ_into_object_store(self) -> None:
+        """put environments into object store in ray"""
+        env_refs = []
+        for env in self._environ:
+            env_ref = ray.put(env)
+            env_refs.append(env_ref)
+        self._ray_map["env"] = env_refs
+
+    def put_cortex_into_object_store(self) -> None:
+        """put cortex component into ray object store"""
+        mac_ref = ray.put(self._mac)
+        self._ray_map["mac"] = mac_ref
+
+    def fetch_total_elapsed_timesteps(self) -> int:
+        """get summ of all timesteps passed from workers"""
+        timesteps = []
+        for worker in self._interaction_worker:
+            ts_future = worker.fetch_elapsed_timesteps.remote()
+            worker_ts = ray.get(ts_future)
+            timesteps.append(worker_ts)
+        return sum(timesteps)
+
+    def update_cortex_in_actor_handlers(self, cortex_ref: ray.ObjectRef) -> None:
+        """update actors of a new reference to cortex"""
+        assert self._interaction_worker is not None, "Worker can not be None"
+        for worker in self._interaction_worker:
+            worker.update_cortex_object.remote(cortex_ref)
 
     # --------------------------------------------------
     # @ -> Methods for saving and loading models
@@ -397,3 +474,43 @@ class ProtoTuner(ProtoTuner):
     def load_models(self, path_to_models: str) -> bool:
         """load all models given path"""
         pass
+
+    # --------------------------------------------------
+    # @ -> Methods for parsing and logging metrics
+    # --------------------------------------------------
+
+    def log_metrics(self, metrics: dict) -> None:
+        """log metrics using logger"""
+        mean_performance = metrics["mean_performance"]
+        mean_scores = metrics["mean_scores"]
+        mean_won_battles = metrics["mean_won_battles"]
+        best_score = metrics["best_score"]
+        highest_battle_win_score = metrics["highest_battle_win_score"]
+        rollout = metrics["rollout"]
+
+        if not mean_performance:
+            return
+
+        self._trace_logger.log_stat("eval_score_mean", mean_scores, rollout)
+
+        # Calculate statistics
+        eval_running_mean = np.mean(mean_performance)
+        eval_score_std = np.std(mean_performance)
+
+        # Log running mean and standard deviation
+        self._trace_logger.log_stat(
+            "eval_score_running_mean", eval_running_mean, rollout
+        )
+        self._trace_logger.log_stat("eval_score_std", eval_score_std, rollout)
+        self._trace_logger.log_stat("eval_won_battles_mean", mean_won_battles, rollout)
+        self._trace_logger.log_stat(
+            "eval_most_won_battles", highest_battle_win_score, rollout
+        )
+        self._trace_logger.log_stat("eval_mean_higest_score", best_score, rollout)
+
+        # Calculate and log the variation between the most recent two evaluations, if available
+        if len(mean_performance) >= 2:
+            # Calculate the variation between the mean scores of the last two evaluations
+            recent_mean_scores = [np.mean(sublist) for sublist in mean_performance[-2:]]
+            eval_score_var = np.abs(recent_mean_scores[-1] - recent_mean_scores[-2])
+            self._trace_logger.log_stat("eval_score_var", eval_score_var, rollout)

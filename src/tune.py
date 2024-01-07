@@ -1,15 +1,15 @@
-import json
 import logging
 from logging import Logger
 from typing import Tuple
 
 import hydra
+import ray
 import wandb
 from logger import TraceLogger
 from node import deserialize_configuration_node
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
-from tuner import SyncTuner
+from tuner import Tuner
 from util import methods
 
 
@@ -19,10 +19,11 @@ def delegate_tuner(
     accelerator: str,
     trace_logger: Logger,
     *,
+    num_workers: int,
     seed: int,
-) -> SyncTuner:
+) -> Tuner:
     """delegate tuner w.r.t passed configuration"""
-    tuner = SyncTuner(configuration)
+    tuner = Tuner(configuration)
 
     timestamp = methods.get_current_timestamp()
     run_identifier = f"marlverse-run-{environ_prefix}-{timestamp}"
@@ -32,6 +33,7 @@ def delegate_tuner(
         accelerator=accelerator,
         logger=trace_logger,
         run_id=run_identifier,
+        num_workers=num_workers,
         seed=seed,
     )
     return tuner
@@ -77,27 +79,42 @@ def runner(cfg: DictConfig) -> None:
 
     accelerator = device.get("accelerator", "cpu")
     seed = device.get("seed", None)
+    num_workers = device.get("num_workers", 1)
+    warmup = runtime.get("warmup", 0)
+
     environ_map = environ_conf.map.get("prefix", "3m")
 
     tuner = delegate_tuner(
-        environ_map, trainable_conf, accelerator, trace_logger, seed=seed
+        environ_map,
+        trainable_conf,
+        accelerator,
+        trace_logger,
+        num_workers=num_workers,
+        seed=seed,
     )
 
     n_timesteps = runtime.n_timesteps
     batch_size = trainable_conf.buffer.batch_size
     eval_schedule = runtime.eval_schedule
-    checkpoint_freq = runtime.checkpoint_frequency
     eval_n_games = runtime.n_games
     display_freq = runtime.display_freq
 
-    tuner.optimize(
-        n_timesteps,
-        batch_size,
-        eval_schedule,
-        checkpoint_freq,
-        eval_n_games,
-        display_freq,
-    )
+    if not ray.is_initialized():
+        ray.init()
+
+    try:
+        tuner.optimize(
+            n_timesteps,
+            batch_size,
+            warmup,
+            eval_schedule,
+            eval_n_games,
+            display_freq,
+        )
+    except Exception as e:
+        logger.info(f"Failed to optimize due to exception {e}")
+        tuner.close_envs()
+        ray.shutdown()
 
 
 if __name__ == "__main__":
