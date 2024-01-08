@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "marlware"
-version = "0.1.0"
+version = "0.2.0"
 description = ""
 authors = ["Sithael <james@marl.engineering>"]
 license = "MIT license"
@@ -34,7 +34,6 @@ omegaconf = "^2.3.0"
 hydra-colorlog = "^1.2.0"
 scipy = "^1.11.3"
 wandb = "^0.16.0"
-#smacv2 = {git = "https://github.com/oxwhirl/smacv2.git"}
 smacv2 = {git = "https://github.com/Sithael/smacv2.git", branch = "dev"}
 
 [build-system]
