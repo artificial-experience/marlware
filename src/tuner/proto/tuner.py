@@ -162,10 +162,10 @@ class ProtoTuner(ProtoTuner):
         return worker_handlers
 
     def _integrate_environ(
-        self, map_name: str, num_envs: int, seed: list
+        self, env_conf: str, num_envs: int, seed: list
     ) -> SC2Environ:
-        """based on map_name create sc2 environ instance"""
-        env_manager = SC2Environ(map_name)
+        """based on env conf create sc2 environ instance"""
+        env_manager = SC2Environ(env_conf)
         env_list = []
         env_info_list = []
         for env_idx in range(num_envs):
@@ -202,7 +202,7 @@ class ProtoTuner(ProtoTuner):
 
     def commit(
         self,
-        environ_prefix: str,
+        env_conf: str,
         accelerator: str,
         logger: Logger,
         run_id: str,
@@ -220,7 +220,7 @@ class ProtoTuner(ProtoTuner):
         self._num_worker_handlers = num_workers
 
         # ---- ---- ---- ---- ---- #
-        # @ -> Setup Run Idenfifier
+        # @ -> Setup Run Identifier
         # ---- ---- ---- ---- ---- #
 
         self._run_identifier = run_id
@@ -242,9 +242,7 @@ class ProtoTuner(ProtoTuner):
         # ---- ---- ---- ---- ---- #
 
         # returns list of envs and infos
-        envs_list, envs_info_list = self._integrate_environ(
-            environ_prefix, num_workers, seed
-        )
+        envs_list, envs_info_list = self._integrate_environ(env_conf, num_workers, seed)
         self._environ = envs_list
         self._environ_info = envs_info_list[0]
 
@@ -300,10 +298,7 @@ class ProtoTuner(ProtoTuner):
         # ---- ---- ---- ---- ---- #
 
         learning_rate = self._conf.learner.training.lr
-        # TODO: 2. move alpha and eps to config file
-        self._optimizer = torch.optim.RMSprop(
-            params=self._params, lr=learning_rate, alpha=0.99, eps=1e-5
-        )
+        self._optimizer = torch.optim.Adam(params=self._params, lr=learning_rate)
 
         # ---- ---- ---- ---- ---- #
         # @ -> Setup Grad Clip

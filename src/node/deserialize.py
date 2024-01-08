@@ -67,13 +67,13 @@ def fill_trainable_config(conf: DictConfig) -> OmegaConf:
 
 def fill_env_config(conf: DictConfig) -> OmegaConf:
     """structure environment configuration"""
-    map_dict_conf = conf["environ"]["map"]
+    env_args_conf = conf["environ"]["env_args"]
 
-    map_config = container.MapConfig(**map_dict_conf)
+    args_conf = container.EnvArgs(**env_args_conf)
 
     structured_conf = OmegaConf.structured(
         container.EnvironConfig(
-            map=map_config,
+            args=args_conf,
         )
     )
     return structured_conf
