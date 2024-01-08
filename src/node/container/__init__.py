@@ -1,5 +1,5 @@
+from .environ import EnvArgs
 from .environ import EnvironConfig
-from .environ import MapConfig
 from .trainable import BufferConfig
 from .trainable import ConstructConfig
 from .trainable import ConstructHypernetworkModelConfig

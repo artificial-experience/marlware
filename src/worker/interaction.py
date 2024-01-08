@@ -3,7 +3,7 @@ from typing import Optional
 from typing import Tuple
 
 import ray
-from smac.env import StarCraft2Env
+from smacv2.env.starcraft2.wrapper import StarCraftCapabilityEnvWrapper
 
 from src.cortex import RecQCortex
 from src.memory.shard import MemoryShard
@@ -32,7 +32,7 @@ class InteractionWorker:
 
     def ensemble_interaction_worker(
         self,
-        env: StarCraft2Env,
+        env: StarCraftCapabilityEnvWrapper,
         cortex: RecQCortex,
         memory_blueprint: dict,
         *,

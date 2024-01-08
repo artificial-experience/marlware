@@ -3736,6 +3736,32 @@ reference = "HEAD"
 resolved_reference = "12614f1760427026cce82083dc3f0ab3ff1d939e"
 
 [[package]]
+name = "SMACv2"
+version = "1.0.0"
+description = "SMACv2 - StarCraft Multi-Agent Challenge."
+optional = false
+python-versions = "*"
+files = []
+develop = false
+
+[package.dependencies]
+absl-py = ">=0.1.0"
+numpy = ">=1.10"
+protobuf = "<3.21"
+pygame = ">=2.0.0"
+pysc2 = ">=3.0.0"
+s2clientprotocol = ">=4.10.1.75800.0"
+
+[package.extras]
+dev = ["black (>=19.10b0)", "flake8 (>=3.7)", "flake8-bugbear (>=20.1)", "pre-commit (>=2.0.1)"]
+
+[package.source]
+type = "git"
+url = "https://github.com/Sithael/smacv2.git"
+reference = "dev"
+resolved_reference = "3a9555f758909e4b527185ff07aef81bbc62713b"
+
+[[package]]
 name = "smart-open"
 version = "6.4.0"
 description = "Utils for streaming large files (S3, HDFS, GCS, Azure Blob Storage, gzip, bz2...)"
@@ -4483,4 +4509,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<3.13"
-content-hash = "55ea37f5ea6dcede5da55fc8eb4407f28d093e78a6e8ba475392c1bf502fe026"
+content-hash = "27f26c41bd0f861105f5e5daddfd7ddf541ea679811a7c6a352fd06d56e45caf"

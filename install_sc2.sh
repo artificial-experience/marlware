@@ -1,37 +1,42 @@
-TARGET_DIR=$(pwd)/games
+#!/bin/bash
+# Install SC2 and add the custom maps
 
-echo 'Installing StarCraft II in the working directory...'
-
-# Check if the StarCraftII directory exists
-if [ ! -d $TARGET_DIR ]; then
-    echo 'StarCraftII is not installed. Installing now...'
-    # Create the StarCraftII directory
-    mkdir -p $TARGET_DIR
-    # Download the StarCraftII package
-    wget http://blzdistsc2-a.akamaihd.net/Linux/SC2.4.10.zip
-    # Unzip the package into the StarCraftII directory
-    unzip -P iagreetotheeula SC2.4.10.zip -d $TARGET_DIR
-    # Remove the downloaded zip file to clean up
-    rm SC2.4.10.zip
-else
-    echo 'StarCraftII is already installed.'
+if [ -z "$EXP_DIR" ]
+then
+    EXP_DIR=~
 fi
 
-echo 'StarCraft II is installed in: '$TARGET_DIR
+echo "EXP_DIR: $EXP_DIR"
+cd $EXP_DIR/pymarl
 
-# Installing SMAC Maps
-echo 'Installing SMAC maps...'
+mkdir 3rdparty
+cd 3rdparty
 
-MAP_DIR="$TARGET_DIR/StarCraftII/Maps"
+export SC2PATH=`pwd`'/StarCraftII'
+echo 'SC2PATH is set to '$SC2PATH
+
+if [ ! -d $SC2PATH ]; then
+        echo 'StarCraftII is not installed. Installing now ...';
+        wget http://blzdistsc2-a.akamaihd.net/Linux/SC2.4.10.zip
+        unzip -P iagreetotheeula SC2.4.10.zip
+        rm -rf SC2.4.10.zip
+else
+        echo 'StarCraftII is already installed.'
+fi
+
+echo 'Adding SMAC maps.'
+MAP_DIR="$SC2PATH/Maps/"
 echo 'MAP_DIR is set to '$MAP_DIR
 
 if [ ! -d $MAP_DIR ]; then
-    mkdir -p $MAP_DIR
+        mkdir -p $MAP_DIR
 fi
 
-# Download and unzip SMAC Maps into the Maps directory
-wget https://github.com/oxwhirl/smac/releases/download/v0.1-beta1/SMAC_Maps.zip
-unzip SMAC_Maps.zip -d $MAP_DIR
-rm SMAC_Maps.zip
+cd ..
+wget https://github.com/oxwhirl/smacv2/releases/download/maps/SMAC_Maps.zip
+unzip SMAC_Maps.zip
+mkdir "$MAP_DIR/SMAC_Maps"
+mv *.SC2Map "$MAP_DIR/SMAC_Maps"
+rm -rf SMAC_Maps.zip
 
-echo 'StarCraft II and all maps are installed.'
+echo 'StarCraft II and SMAC are installed.'

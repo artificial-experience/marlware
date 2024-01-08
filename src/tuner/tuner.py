@@ -33,7 +33,7 @@ class Tuner(ProtoTuner):
 
     def commit(
         self,
-        environ_prefix: str,
+        env_conf: str,
         accelerator: str,
         logger: Logger,
         run_id: str,
@@ -43,7 +43,7 @@ class Tuner(ProtoTuner):
     ) -> None:
         """based on conf delegate tuner object with given parameters"""
         super().commit(
-            environ_prefix,
+            env_conf,
             accelerator,
             logger,
             run_id,
