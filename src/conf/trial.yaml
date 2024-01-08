@@ -37,7 +37,9 @@ rollout:
 
 device:
   accelerator: "cpu"
-  num_workers: 2
+  num_workers: 4
   seed:
     - 91
     - 92
+    - 93
+    - 94

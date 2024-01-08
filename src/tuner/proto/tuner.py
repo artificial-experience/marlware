@@ -298,10 +298,7 @@ class ProtoTuner(ProtoTuner):
         # ---- ---- ---- ---- ---- #
 
         learning_rate = self._conf.learner.training.lr
-        # TODO: 2. move alpha and eps to config file
-        self._optimizer = torch.optim.RMSprop(
-            params=self._params, lr=learning_rate, alpha=0.99, eps=1e-5
-        )
+        self._optimizer = torch.optim.Adam(params=self._params, lr=learning_rate)
 
         # ---- ---- ---- ---- ---- #
         # @ -> Setup Grad Clip

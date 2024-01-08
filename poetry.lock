@@ -3757,9 +3757,9 @@ dev = ["black (>=19.10b0)", "flake8 (>=3.7)", "flake8-bugbear (>=20.1)", "pre-co
 
 [package.source]
 type = "git"
-url = "https://github.com/oxwhirl/smacv2.git"
-reference = "HEAD"
-resolved_reference = "8f3b4454813df93feaec2b8b03762104247daac9"
+url = "https://github.com/Sithael/smacv2.git"
+reference = "dev"
+resolved_reference = "3a9555f758909e4b527185ff07aef81bbc62713b"
 
 [[package]]
 name = "smart-open"
@@ -4509,4 +4509,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<3.13"
-content-hash = "d099ed0af59d9e344d662a7b5bf2297041f9926869278f78a92019b477592852"
+content-hash = "27f26c41bd0f861105f5e5daddfd7ddf541ea679811a7c6a352fd06d56e45caf"
