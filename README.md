@@ -1,70 +1,70 @@
-# MARLware: Modular Multi-Agent Reinforcement Learning
+![supported platforms](https://img.shields.io/badge/platform-Linux%20%7C%20Mac%20%7C%20Windows%20(soon)-929292)
+![supported python versions](https://img.shields.io/badge/python-%3E%3D%203.6-306998)
+![license MIT](https://img.shields.io/badge/licence-MIT-green)
 
-Welcome to Marl-Engineering, a repository dedicated to developing a robust and modular framework for Multi-Agent Reinforcement Learning (MARL) algorithms. This project is a testament to my commitment to advancing research in MARL by focusing on modular design, code readability, and reproducibility of results.
+![MARLware Logo](docs/img/sc2.png)
 
-## The Marl-Engineering Mission
+# MARLware
 
-Marl-Engineering is more than a codebase; it's an evolving platform for deep exploration and experimentation in the field of Deep MARL. It represents my journey in understanding and applying complex multi-agent systems and deep learning models. I approach this project not just as a developer but as a learner, deeply committed to comprehending every aspect of MARL.
+MARLware is a comprehensive framework for Multi-Agent Reinforcement Learning (MARL) based on [pymarl2](https://github.com/hijkzzz/pymarl2), designed to seamlessly integrate with the Ray engine and Hydra for efficient and scalable distributed task management. This robust platform aims to facilitate the implementation and experimentation with a variety of MARL algorithms.
 
-This repository is designed to be modular, allowing researchers and enthusiasts to plug in different MARL algorithms and compare their performance in various settings. The focus on modularity also enables easier experimentation and adaptation of new methods and ideas in the field.
+## Features
 
-## Key Features
-
-- **Modular Architecture**: Marl-Engineering is structured to support a range of MARL algorithms, with each component designed to be interchangeable and customizable. This modularity allows for extensive experimentation and adaptation.
-
-- **Code Readability and Maintenance**: Emphasis is placed on clear, well-documented code to facilitate understanding and further development. This approach enhances the learning experience for those new to the field and maintains high standards for code quality.
-
-- **Reproducibility of Results**: Ensuring the reproducibility of results is a core principle of Marl-Engineering. The repository is structured to enable researchers to replicate experiments and validate findings easily.
+* [x] **Ray Engine Integration**: Enhanced with [Ray](https://www.ray.io) for distributed task management, ensuring scalability and efficiency in complex MARL scenarios.
+* [x] **Hydra Configuration**: Utilizes Hydra for dynamic and flexible configuration, streamlining the adaptation and tuning of MARL algorithms.
+* [x] **Modular Design**: Built with a focus on modularity, allowing for easy integration and experimentation with different MARL algorithms.
+* [x] **Python Compatibility**: Supports Python versions >= 3.6, making it accessible to a broad range of developers and researchers.
 
 ## Installation
-It is necessary to install pysc2 before using this reporitory, please refer to:
-> https://github.com/google-deepmind/pysc2
----
-- Poetry installation
-```
-source activate_env.sh
-```
-- Docker installation (work in progress)
-```
-source install_docker.sh
-```
 
-## Experiments
-- Run default configuration
-```
-python3 src/tune.py
-```
-or
-```
-python3 src/tune.py --config-name="trial.yaml"
-```
-- Run specific configuration
-```
-python3 src/tune.py --config-name="<defined-custom_config>.yaml"
-```
+Set up MARLware by following the installation instructions for Ray, Hydra, and other necessary dependencies:
+
+### Environment Setup
+
+> [!IMPORTANT]
+> It is necessary to install pysc2 before using this repository, please refer to [pysc2 installation](https://github.com/google-deepmind/pysc2)
+
+#### Poetry Environment
+> source activate_env.sh
+
+#### Docker Installation (Coming Soon)
+> source install_docker.sh
+
+## Experimentation and Usage
+
+Effortlessly conduct advanced experiments in MARL with MARLware.
+
+### Running Default Configurations
+> python3 src/tune.py
+
+Or specify a custom configuration:
+
+> python3 src/tune.py --config-name="<custom_config>.yaml"
+
+> python3 src/tune.py trainable=qmix_large
+
 
 ## Applications and Use Cases
 
-Marl-Engineering is ideal for tackling complex cooperative tasks that require coordination among multiple agents. Its applications span across various domains, such as strategic games, collaborative robotics, and multi-agent simulations. By providing a flexible and adaptable framework, Marl-Engineering aims to push the boundaries of what's possible in the realm of MARL.
+MARLware is adept at handling sophisticated coordination tasks among multiple agents. Its flexibility and scalability make it suitable for strategic games, collaborative robotics, and complex multi-agent simulations.
 
-## Join the Journey
+## Join the MARLware Community
 
-As Marl-Engineering continues to grow, I plan to integrate cutting-edge technologies and methodologies to enhance its capabilities further. I invite collaborators, researchers, and enthusiasts to join me in this exciting journey of discovery and innovation in the world of Multi-Agent Reinforcement Learning.
+Contribute to and collaborate on MARLware as it evolves with cutting-edge technologies in Multi-Agent Reinforcement Learning.
 
 ## Reference
-Some of the implementation ideas were taken from pymarl and pymarl2, you can refer to those sources in the links below:
-> pymarl -> https://github.com/oxwhirl/pymarl <br />
-> pymarl2 -> https://github.com/hijkzzz/pymarl2
+Inspired by existing frameworks in the field:
+> [pymarl2 - GitHub](https://github.com/hijkzzz/pymarl2)
 
 ## Citation
 
-If you use this repository in your research, please cite it using the following BibTeX entry:
+For referencing MARLware in academic and research work:
 
 ```bibtex
 @misc{chojancki2023marl-engineering,
-  title={marl-engineering},
-  author={Chojancki, James},
+  title={MARLware: Modular Multi-Agent Reinforcement Learning},
+  author={James Chojnacki},
   year={2023},
   publisher={GitHub},
-  howpublished={\url{https://github.com/Sithael/marl-engineering}}
+  howpublished={\url{https://github.com/marl-engineering/marlware}}
 }

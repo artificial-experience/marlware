@@ -220,7 +220,7 @@ class ProtoTuner(ProtoTuner):
         self._num_worker_handlers = num_workers
 
         # ---- ---- ---- ---- ---- #
-        # @ -> Setup Run Idenfifier
+        # @ -> Setup Run Identifier
         # ---- ---- ---- ---- ---- #
 
         self._run_identifier = run_id
