@@ -25,24 +25,32 @@ Set up MARLware by following the installation instructions for Ray, Hydra, and o
 > It is necessary to install pysc2 before using this repository, please refer to [pysc2 installation](https://github.com/google-deepmind/pysc2)
 
 #### Poetry Environment
-> source activate_env.sh
+```
+source activate_env.sh
+```
 
 #### Docker Installation (Coming Soon)
-> source install_docker.sh
+```
+source install_docker.sh
+```
 
 ## Experimentation and Usage
 
 Effortlessly conduct advanced experiments in MARL with MARLware.
 
 ### Running Default Configurations
-> python3 src/tune.py
+```
+python3 src/tune.py
+```
 
 Or specify a custom configuration:
+```
+python3 src/tune.py --config-name="<custom_config>.yaml"
+```
 
-> python3 src/tune.py --config-name="<custom_config>.yaml"
-
-> python3 src/tune.py trainable=qmix_large
-
+```
+python3 src/tune.py trainable=qmix_large
+```
 
 ## Applications and Use Cases
 
