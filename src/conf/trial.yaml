@@ -13,7 +13,7 @@ hydra:
 defaults:
   - _self_
   - trainable: qmix
-  - environ: sc2
+  - environ: sc2-protoss
 
   - override hydra/job_logging: custom
 
