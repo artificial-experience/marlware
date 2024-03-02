@@ -2,7 +2,7 @@
 ![supported python versions](https://img.shields.io/badge/python-%3E%3D%203.6-306998)
 ![license MIT](https://img.shields.io/badge/licence-MIT-green)
 
-![MARLware Logo](docs/img/sc2.png)
+![MARLware Logo](docs/img/marlware-logo.png)
 
 # MARLware
 
